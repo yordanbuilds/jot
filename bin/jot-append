@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# jot-append — append one captured thought to the configured inbox file.
+# Usage: jot-append <text>. Multi-line text lands as one markdown todo:
+# the first line goes through the template, continuation lines are
+# indented two spaces (markdown list continuation).
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+text="${1:-}"
+[[ -n ${text//[[:space:]]/} ]] || exit 0
+
+fail() {
+  command -v omarchy-notification-send >/dev/null 2>&1 &&
+    omarchy-notification-send "Jot couldn't save" "$text" || true
+  exit 1
+}
+
+file="" template=""
+{ IFS= read -r file; IFS= read -r template; } < <("$HERE/jot-config")
+[[ -n $file && -n $template ]] || fail
+
+# The template goes through date first; {text} is substituted afterward and
+# quoted on both sides of the expansion — so % in the captured text is never
+# eaten by date, and no sed/glob/patsub metacharacters are ever interpreted.
+rendered="$(date +"$template")" || fail
+first="${text%%$'\n'*}"
+if [[ $rendered == *"{text}"* ]]; then
+  entry="${rendered//"{text}"/"$first"}"
+else
+  entry="$rendered $first"
+fi
+if [[ $text == *$'\n'* ]]; then
+  rest="${text#*$'\n'}"
+  while IFS= read -r l; do entry+=$'\n'"  $l"; done <<<"$rest"
+fi
+
+mkdir -p "$(dirname "$file")" 2>/dev/null || fail
+printf '%s\n' "$entry" 2>/dev/null >>"$file" || fail

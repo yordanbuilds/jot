@@ -98,6 +98,58 @@ check "config: non-object config falls back" [ "$(sed -n 1p <<<"$out")" = "$SB/n
 check "config: non-object config stays two lines" [ "$(wc -l <<<"$out")" -eq 2 ]
 check "config: non-object config is silent on stderr" [ ! -s "$SB/stderr" ]
 
+# --- jot-append --------------------------------------------------------------
+
+fresh_sandbox
+run "$HERE/bin/jot-append" "call the bank"
+check "append: creates dir and file" [ -f "$SB/notes/inbox.md" ]
+check "append: default template renders" \
+  grep -qE '^- \[ \] 20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} call the bank$' "$SB/notes/inbox.md"
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '{"template":"- {text}"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-append" '50% off & a/b \ test'
+check "append: metacharacters stay literal" \
+  [ "$(cat "$SB/notes/inbox.md")" = '- 50% off & a/b \ test' ]
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '{"template":"- {text}"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-append" $'first\nsecond\nthird'
+expected=$'- first\n  second\n  third'
+check "append: multiline continuation indent" [ "$(cat "$SB/notes/inbox.md")" = "$expected" ]
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '{"template":"* note:"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-append" "hello"
+check "append: template without {text} still captures" \
+  [ "$(cat "$SB/notes/inbox.md")" = '* note: hello' ]
+
+fresh_sandbox
+run "$HERE/bin/jot-append" ""
+check "append: empty text writes nothing" not test -e "$SB/notes/inbox.md"
+run "$HERE/bin/jot-append" $'  \n '
+check "append: whitespace-only writes nothing" not test -e "$SB/notes/inbox.md"
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '{"template":"- {text}"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-append" "one"
+run "$HERE/bin/jot-append" "two"
+check "append: appends, never overwrites" [ "$(wc -l <"$SB/notes/inbox.md")" = "2" ]
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot" "$SB/ro"
+chmod 555 "$SB/ro"
+printf '{"file":"~/ro/sub/inbox.md"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-append" "precious thought" && rc=0 || rc=$?
+check "append: failure exits non-zero" [ "$rc" != "0" ]
+check "append: failure notification carries the text" \
+  grep -q "^omarchy-notification-send Jot couldn't save precious thought" "$LOG"
+chmod 755 "$SB/ro"
+
 # --- summary -----------------------------------------------------------------
 
 echo
