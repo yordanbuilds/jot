@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# jot-open-inbox — open the configured inbox file in the Omarchy editor.
+# The organizing moment; Jot's overlay owns the capture moment.
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+file=""
+{ IFS= read -r file; } < <("$HERE/jot-config")
+[[ -n $file ]] || exit 1
+
+mkdir -p "$(dirname "$file")"
+exec omarchy-launch-editor "$file"

@@ -150,6 +150,21 @@ check "append: failure notification carries the text" \
   grep -q "^omarchy-notification-send Jot couldn't save precious thought" "$LOG"
 chmod 755 "$SB/ro"
 
+# --- jot-open-inbox ----------------------------------------------------------
+
+fresh_sandbox
+run "$HERE/bin/jot-open-inbox"
+check "open-inbox: launches editor on default file" \
+  grep -q "^omarchy-launch-editor $SB/notes/inbox.md$" "$LOG"
+check "open-inbox: creates the notes dir" [ -d "$SB/notes" ]
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '{"file":"~/elsewhere/in.md"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-open-inbox"
+check "open-inbox: honors configured file" \
+  grep -q "^omarchy-launch-editor $SB/elsewhere/in.md$" "$LOG"
+
 # --- summary -----------------------------------------------------------------
 
 echo
