@@ -11,9 +11,14 @@ MENU="$HOME/.config/omarchy/extensions/omarchy-menu.jsonc"
 [[ -f $BINDINGS ]] && sed -i '/>>> jot >>>/,/<<< jot <<</d' "$BINDINGS"
 [[ -f $MENU ]] && sed -i '/>>> jot menu >>>/,/<<< jot menu <<</d' "$MENU"
 
+# The setup flag is our bookkeeping, not your data, so it goes unconditionally:
+# leaving it behind would make a later reinstall no-op into a dead plugin —
+# jot-setup would see the flag and skip the binding and menu rows entirely.
+rm -f "$HOME/.config/jot/.setup-done"
+
 purge="${1:-}"
 if [[ $purge != --purge && -t 0 && -d "$HOME/.config/jot" ]]; then
-  read -rp "Remove ~/.config/jot (config + setup flag)? [y/N] " ans
+  read -rp "Remove ~/.config/jot (your config)? [y/N] " ans
   [[ ${ans,,} == y* ]] && purge=--purge
 fi
 [[ $purge == --purge ]] && rm -rf "$HOME/.config/jot"

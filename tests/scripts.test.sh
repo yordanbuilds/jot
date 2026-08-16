@@ -278,6 +278,21 @@ run "$HERE/bin/jot-setup"
 run "$HERE/bin/jot-uninstall" --purge
 check "uninstall --purge: config dir removed" not test -d "$SB/.config/jot"
 
+# .setup-done is setup's own bookkeeping, not your data: it goes even without
+# --purge, so re-adding the plugin installs again instead of no-opping into a
+# dead plugin. config.json is yours, and stays until you ask for --purge.
+
+fresh_sandbox
+run "$HERE/bin/jot-setup"
+run "$HERE/bin/jot-uninstall" </dev/null
+check "uninstall: setup flag cleared without --purge" not test -e "$SB/.config/jot/.setup-done"
+check "uninstall: config kept when the flag goes" [ -f "$SB/.config/jot/config.json" ]
+run "$HERE/bin/jot-setup"
+check "reinstall: binding returns without --force" \
+  grep -q 'o.bind("SUPER + N", "Jot"' "$SB/.config/hypr/bindings.lua"
+check "reinstall: menu rows return without --force" \
+  grep -q '"trigger.jot.down"' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+
 # --- summary -----------------------------------------------------------------
 
 echo
