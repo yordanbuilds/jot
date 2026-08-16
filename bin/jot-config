@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # jot-config — resolve Jot's config. Prints exactly two lines:
-#   1: the inbox file path, ~ expanded
-#   2: the line template (single-line by contract)
+#   1: the inbox file path — always absolute, ~ expanded
+#   2: the line template — always a single line
+# Both lines are enforced, not assumed: a config that fails to supply a usable
+# string for either key gets the default rather than a malformed line.
 # Missing file/keys fall back to defaults; broken JSON notifies and falls back.
 set -u
 
@@ -12,16 +14,26 @@ DEFAULT_TEMPLATE='- [ ] %Y-%m-%d %H:%M {text}'
 file="" template=""
 if [[ -f $CONFIG ]]; then
   if jq -e . "$CONFIG" >/dev/null 2>&1; then
-    file="$(jq -r '.file // empty' "$CONFIG")"
-    template="$(jq -r '.template // empty' "$CONFIG")"
+    # `strings` drops non-string values (arrays, numbers, true) so a mistyped
+    # key reads as unset; `?` keeps a non-object document from erroring out.
+    file="$(jq -r '.file? // empty | strings' "$CONFIG" 2>/dev/null)"
+    template="$(jq -r '.template? // empty | strings' "$CONFIG" 2>/dev/null)"
   else
     command -v omarchy-notification-send >/dev/null 2>&1 &&
       omarchy-notification-send "Jot" "config.json is invalid — using defaults" || true
   fi
 fi
 
+# Keep only the first line of each, so an embedded newline can never push a
+# third line onto stdout and desynchronize a caller's `read file; read template`.
+file=${file%%$'\n'*}
+template=${template%%$'\n'*}
+
 [[ -n $file ]] || file="$DEFAULT_FILE"
 [[ -n $template ]] || template="$DEFAULT_TEMPLATE"
 file="${file/#\~/$HOME}"
+# Line 1 is absolute by contract: a relative path is anchored at $HOME rather
+# than left to resolve against whatever cwd the caller happens to have.
+[[ $file == /* ]] || file="$HOME/$file"
 
 printf '%s\n%s\n' "$file" "$template"

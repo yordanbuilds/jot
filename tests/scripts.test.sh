@@ -65,6 +65,39 @@ printf 'not json' >"$SB/.config/jot/config.json"
 check "config: broken JSON falls back" [ "${f:-}" = "$SB/notes/inbox.md" ]
 check "config: broken JSON notifies" grep -q '^omarchy-notification-send' "$LOG"
 
+# The two-line contract itself: line 1 absolute, exactly two lines, exit 0 —
+# whatever a hand-edited config.json throws at it.
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '%s' '{"file":"notes/inbox.md"}' >"$SB/.config/jot/config.json"
+out="$(run "$HERE/bin/jot-config")"; rc=$?
+check "config: exits 0" [ "$rc" -eq 0 ]
+check "config: prints exactly two lines" [ "$(wc -l <<<"$out")" -eq 2 ]
+check "config: relative file anchored at HOME" [ "$(sed -n 1p <<<"$out")" = "$SB/notes/inbox.md" ]
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '%s' '{"file":["a","b"]}' >"$SB/.config/jot/config.json"
+out="$(run "$HERE/bin/jot-config" 2>"$SB/stderr")"
+check "config: non-string file falls back" [ "$(sed -n 1p <<<"$out")" = "$SB/notes/inbox.md" ]
+check "config: non-string file stays two lines" [ "$(wc -l <<<"$out")" -eq 2 ]
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '%s' '{"template":"- {text}\nrogue"}' >"$SB/.config/jot/config.json"
+out="$(run "$HERE/bin/jot-config")"
+check "config: multi-line template keeps first line" [ "$(sed -n 2p <<<"$out")" = "- {text}" ]
+check "config: multi-line template stays two lines" [ "$(wc -l <<<"$out")" -eq 2 ]
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '%s' '"a bare string"' >"$SB/.config/jot/config.json"
+out="$(run "$HERE/bin/jot-config" 2>"$SB/stderr")"
+check "config: non-object config falls back" [ "$(sed -n 1p <<<"$out")" = "$SB/notes/inbox.md" ]
+check "config: non-object config stays two lines" [ "$(wc -l <<<"$out")" -eq 2 ]
+check "config: non-object config is silent on stderr" [ ! -s "$SB/stderr" ]
+
 # --- summary -----------------------------------------------------------------
 
 echo
