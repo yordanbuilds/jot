@@ -165,6 +165,22 @@ run "$HERE/bin/jot-open-inbox"
 check "open-inbox: honors configured file" \
   grep -q "^omarchy-launch-editor $SB/elsewhere/in.md$" "$LOG"
 
+# A directory it can't create is the one failure this row can hit, and the menu
+# swallows stderr — so it has to say so out loud instead of opening a buffer
+# that could never be saved.
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot" "$SB/ro"
+chmod 555 "$SB/ro"
+printf '{"file":"~/ro/sub/in.md"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-open-inbox" && rc=0 || rc=$?
+check "open-inbox: unopenable dir exits 1" [ "$rc" = "1" ]
+check "open-inbox: unopenable dir notifies" \
+  grep -q "^omarchy-notification-send Jot couldn't open the inbox" "$LOG"
+check "open-inbox: unopenable dir never launches the editor" \
+  not grep -q '^omarchy-launch-editor' "$LOG"
+chmod 755 "$SB/ro"
+
 # --- summary -----------------------------------------------------------------
 
 echo

@@ -8,5 +8,11 @@ file=""
 { IFS= read -r file; } < <("$HERE/jot-config")
 [[ -n $file ]] || exit 1
 
-mkdir -p "$(dirname "$file")"
+# Launched from the menu, stderr goes nowhere a user can see it — so a dir we
+# can't create has to notify and stop, never open a buffer that can't be saved.
+mkdir -p "$(dirname "$file")" 2>/dev/null || {
+  command -v omarchy-notification-send >/dev/null 2>&1 &&
+    omarchy-notification-send "Jot couldn't open the inbox" "$file" || true
+  exit 1
+}
 exec omarchy-launch-editor "$file"
