@@ -181,6 +181,51 @@ check "open-inbox: unopenable dir never launches the editor" \
   not grep -q '^omarchy-launch-editor' "$LOG"
 chmod 755 "$SB/ro"
 
+# --- jot-setup ---------------------------------------------------------------
+
+fresh_sandbox
+run "$HERE/bin/jot-setup"
+check "setup: writes default config" grep -q '"file": "~/notes/inbox.md"' "$SB/.config/jot/config.json"
+check "setup: binds SUPER+N when free" grep -q 'o.bind("SUPER + N", "Jot"' "$SB/.config/hypr/bindings.lua"
+check "setup: binding sits in marked block" grep -q -- '-- >>> jot >>>' "$SB/.config/hypr/bindings.lua"
+MENUF="$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+check "setup: menu rows added" grep -q '"trigger.jot.down"' "$MENUF"
+check "setup: menu open-inbox uses absolute path" grep -qF "$HERE/bin/jot-open-inbox" "$MENUF"
+check "setup: menu block closes before brace" \
+  bash -c 'tail -n 2 "$1" | head -n 1 | grep -q "<<< jot menu <<<"' _ "$MENUF"
+check "setup: flag written" [ -e "$SB/.config/jot/.setup-done" ]
+check "setup: ready notification" grep -q '^omarchy-notification-send Jot is ready' "$LOG"
+
+before="$(cat "$SB/.config/hypr/bindings.lua")$(cat "$MENUF")"
+run "$HERE/bin/jot-setup"
+after="$(cat "$SB/.config/hypr/bindings.lua")$(cat "$MENUF")"
+check "setup: second run is a no-op" [ "$before" = "$after" ]
+
+fresh_sandbox
+printf '{\n  "personal": {"icon":"x","label":"Personal"}\n}\n' >"$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+run "$HERE/bin/jot-setup"
+check "setup: comma added to preceding menu entry" \
+  grep -q '"personal": {"icon":"x","label":"Personal"},' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+
+fresh_sandbox
+echo '[{"modmask":64,"key":"N"}]' >"$SB/hyprctl.out"
+run "$HERE/bin/jot-setup"
+check "setup: taken key not bound" not grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
+check "setup: taken key noted in notification" grep -q 'taken' "$LOG"
+
+fresh_sandbox
+printf -- '-- >>> jot >>>\no.bind("SUPER + M", "Jot", "custom")\n-- <<< jot <<<\n' >"$SB/.config/hypr/bindings.lua"
+run "$HERE/bin/jot-setup"
+check "setup: existing jot block untouched" \
+  [ "$(grep -c '>>> jot >>>' "$SB/.config/hypr/bindings.lua")" = "1" ]
+check "setup: existing jot block keeps custom key" not grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '{"file":"~/custom.md"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-setup"
+check "setup: existing config preserved" grep -q 'custom.md' "$SB/.config/jot/config.json"
+
 # --- summary -----------------------------------------------------------------
 
 echo

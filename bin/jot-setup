@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# jot-setup — one-time omakase setup, run by the plugin on first load.
+# Writes the default config, the SUPER+N keybinding (only if genuinely
+# free), and the Omarchy menu rows. Idempotent via ~/.config/jot/.setup-done;
+# --force re-runs it. Everything it writes sits in marked blocks and is
+# yours to edit — jot-setup never rewrites an existing block.
+set -euo pipefail
+
+SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+PLUGIN_DIR="$(dirname "$(dirname "$SCRIPT")")"
+FLAG="$HOME/.config/jot/.setup-done"
+BINDINGS="$HOME/.config/hypr/bindings.lua"
+MENU="$HOME/.config/omarchy/extensions/omarchy-menu.jsonc"
+[[ -e $FLAG && ${1:-} != --force ]] && exit 0
+
+notify() { command -v omarchy-notification-send >/dev/null 2>&1 && omarchy-notification-send "$1" "$2" || true; }
+
+mkdir -p "$HOME/.config/jot"
+
+# --- Default config, only if absent ------------------------------------------
+if [[ ! -e "$HOME/.config/jot/config.json" ]]; then
+  cat >"$HOME/.config/jot/config.json" <<'EOF'
+{
+  "file": "~/notes/inbox.md",
+  "template": "- [ ] %Y-%m-%d %H:%M {text}"
+}
+EOF
+fi
+
+# --- Keybinding: SUPER+N, only if genuinely free -----------------------------
+bind_note="Press SUPER+N"
+if ! grep -q '>>> jot >>>' "$BINDINGS" 2>/dev/null; then
+  taken=$(hyprctl -j binds 2>/dev/null |
+    jq '[.[] | select(.modmask == 64 and (.key | ascii_upcase == "N"))] | length' 2>/dev/null || echo 0)
+  if [[ ${taken:-0} -gt 0 ]]; then
+    bind_note="SUPER+N is taken — bind your own key (see README)"
+  else
+    cat >>"$BINDINGS" <<'EOF'
+
+-- >>> jot >>>  Added once by Jot setup — yours to edit or remove.
+o.bind("SUPER + N", "Jot", "omarchy-shell shell toggle yordanbuilds.jot '{}'")
+-- <<< jot <<<
+EOF
+  fi
+fi
+
+# --- Menu rows, only if absent -----------------------------------------------
+if ! grep -q '>>> jot menu >>>' "$MENU" 2>/dev/null; then
+  mkdir -p "$(dirname "$MENU")"
+  [[ -e $MENU ]] || printf '{\n}\n' >"$MENU"
+  blocktmp="$(mktemp)"; tmp="$(mktemp)"
+  trap 'rm -f "$blocktmp" "$tmp"' EXIT
+  cat >"$blocktmp" <<EOF
+  // >>> jot menu >>>  Added once by Jot setup — yours to edit or remove.
+  "trigger.jot": { "icon": "󰎞", "label": "Jot", "aliases": ["jot"] },
+  "trigger.jot.down": { "icon": "󰙏", "label": "Jot down", "action": "omarchy-shell shell toggle yordanbuilds.jot '{}'" },
+  "trigger.jot.inbox": { "icon": "󰮒", "label": "Open inbox", "action": "$PLUGIN_DIR/bin/jot-open-inbox" },
+  // <<< jot menu <<<
+EOF
+  # Insert before the file's closing brace, adding a comma to the preceding
+  # entry if it lacks one (same approach as Rig's rig-menu-sync).
+  awk -v blockfile="$blocktmp" '
+    { lines[NR] = $0 }
+    END {
+      last = 0
+      for (i = 1; i <= NR; i++) if (lines[i] ~ /^[[:space:]]*}[[:space:]]*$/) last = i
+      if (last == 0) exit 3
+      for (j = last - 1; j >= 1; j--) {
+        t = lines[j]
+        sub(/[[:space:]]+$/, "", t)
+        if (t == "" || t ~ /^[[:space:]]*\/\//) continue
+        if (t !~ /[,{[]$/) lines[j] = lines[j] ","
+        break
+      }
+      for (i = 1; i <= NR; i++) {
+        if (i == last) while ((getline line < blockfile) > 0) print line
+        print lines[i]
+      }
+    }
+  ' "$MENU" >"$tmp"
+  mv "$tmp" "$MENU"
+fi
+
+touch "$FLAG"
+notify "Jot is ready" "$bind_note"
