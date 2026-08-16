@@ -1,0 +1,21 @@
+name: test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Script tests
+        run: bash tests/scripts.test.sh
+      - name: Manifest sanity
+        run: |
+          jq -e '.schemaVersion == 1
+                 and .id == "yordanbuilds.jot"
+                 and .kinds == ["overlay"]
+                 and .entryPoints.overlay == "Jot.qml"' manifest.json
+          test -f Jot.qml
