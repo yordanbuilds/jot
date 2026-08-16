@@ -20,14 +20,24 @@ fresh_sandbox() {
   LOG="$SB/calls.log"; : >"$LOG"
   mkdir -p "$SB/bin" "$SB/.config/hypr" "$SB/.config/omarchy/extensions"
   touch "$SB/.config/hypr/bindings.lua"
-  local shim
-  for shim in omarchy-notification-send omarchy-launch-editor; do
-    cat >"$SB/bin/$shim" <<SHIM
+  cat >"$SB/bin/omarchy-launch-editor" <<SHIM
 #!/usr/bin/env bash
-echo "$shim \$*" >>"$LOG"
+echo "omarchy-launch-editor \$*" >>"$LOG"
 SHIM
-    chmod +x "$SB/bin/$shim"
-  done
+  chmod +x "$SB/bin/omarchy-launch-editor"
+  # Not a plain argv echo: the real omarchy-notification-send takes the body
+  # positionally and only when it doesn't look like an option
+  # (`if [[ $1 != -* ]]`), so a dash-leading body is silently swallowed into
+  # option passthrough. The shim mirrors that rule — otherwise a caller that
+  # loses its body every time would still look fine in this log.
+  cat >"$SB/bin/omarchy-notification-send" <<SHIM
+#!/usr/bin/env bash
+headline="\$1"; shift
+description=""
+if ((\$# > 0)) && [[ \$1 != -* ]]; then description="\$1"; shift; fi
+echo "omarchy-notification-send \$headline\${description:+ \$description}" >>"$LOG"
+SHIM
+  chmod +x "$SB/bin/omarchy-notification-send"
   cat >"$SB/bin/hyprctl" <<SHIM
 #!/usr/bin/env bash
 echo "hyprctl \$*" >>"$LOG"
@@ -120,6 +130,33 @@ run "$HERE/bin/jot-append" $'first\nsecond\nthird'
 expected=$'- first\n  second\n  third'
 check "append: multiline continuation indent" [ "$(cat "$SB/notes/inbox.md")" = "$expected" ]
 
+# A newline at either edge of a capture is a stray Shift+Enter, not content.
+# It used to become a permanent blank continuation line — two spaces on their
+# own — or push the real thought off the templated first line.
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '{"template":"- {text}"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-append" $'a\n'
+check "append: trailing newline writes exactly one line" \
+  [ "$(cat "$SB/notes/inbox.md")" = '- a' ]
+check "append: trailing newline leaves no blank continuation line" \
+  not grep -qE '^[[:space:]]+$' "$SB/notes/inbox.md"
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '{"template":"- {text}"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-append" $'\nreal thought'
+check "append: leading newline never templates an empty first line" \
+  [ "$(cat "$SB/notes/inbox.md")" = '- real thought' ]
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot"
+printf '{"template":"- {text}"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-append" $'\n\nfirst\nsecond\n\n'
+check "append: edge newlines stripped, interior kept" \
+  [ "$(cat "$SB/notes/inbox.md")" = "$(printf -- '- first\n  second')" ]
+
 fresh_sandbox
 mkdir -p "$SB/.config/jot"
 printf '{"template":"* note:"}' >"$SB/.config/jot/config.json"
@@ -147,7 +184,21 @@ printf '{"file":"~/ro/sub/inbox.md"}' >"$SB/.config/jot/config.json"
 run "$HERE/bin/jot-append" "precious thought" && rc=0 || rc=$?
 check "append: failure exits non-zero" [ "$rc" != "0" ]
 check "append: failure notification carries the text" \
-  grep -q "^omarchy-notification-send Jot couldn't save precious thought" "$LOG"
+  grep -qE "^omarchy-notification-send Jot couldn't save +precious thought" "$LOG"
+chmod 755 "$SB/ro"
+
+# The toast is the only trace a failed capture leaves, so it has to survive
+# text the notifier could mistake for its own options.
+
+fresh_sandbox
+mkdir -p "$SB/.config/jot" "$SB/ro"
+chmod 555 "$SB/ro"
+printf '{"file":"~/ro/sub/inbox.md"}' >"$SB/.config/jot/config.json"
+run "$HERE/bin/jot-append" '- buy milk' && rc=0 || rc=$?
+check "append: dash-leading failure still notifies" \
+  grep -q "^omarchy-notification-send Jot couldn't save" "$LOG"
+check "append: dash-leading notification carries the text" \
+  grep -q "buy milk" "$LOG"
 chmod 755 "$SB/ro"
 
 # --- jot-open-inbox ----------------------------------------------------------

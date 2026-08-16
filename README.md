@@ -38,6 +38,7 @@ Jot won't put it back. If SUPER+N was taken, bind any key you like in
 | <kbd>Shift</kbd>+<kbd>Enter</kbd> | New line — the thought stays one item   |
 | <kbd>Enter</kbd>                | Append to the inbox and close             |
 | <kbd>Esc</kbd> / empty <kbd>Enter</kbd> | Close without saving              |
+| click outside the card          | Close without saving                      |
 
 Multi-line thoughts land as one markdown todo with indented continuation
 lines:

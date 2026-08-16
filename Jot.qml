@@ -136,6 +136,12 @@ Item {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           text: root.text || "Jot something down…"
+          // A capture is text, never markup. Under the default AutoText a
+          // thought like "<div> needs margin" is guessed to be rich text: the
+          // tags disappear from the card and \n stops breaking lines, while
+          // the file still gets the literal characters. The card has to show
+          // what will be saved.
+          textFormat: Text.PlainText
           color: root.foreground
           opacity: root.text ? 1 : 0.58
           font.family: root.fontFamily

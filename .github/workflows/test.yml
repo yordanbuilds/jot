@@ -5,6 +5,11 @@ on:
     branches: [master]
   pull_request:
 
+# Nothing here writes back to the repository, so the default token doesn't
+# need to be able to.
+permissions:
+  contents: read
+
 jobs:
   scripts:
     runs-on: ubuntu-latest

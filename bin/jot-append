@@ -9,9 +9,21 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 text="${1:-}"
 [[ -n ${text//[[:space:]]/} ]] || exit 0
 
+# A newline at either edge is a stray Shift+Enter, not content. Left in, a
+# trailing one writes a permanent blank continuation line ("  ") and a leading
+# one templates an empty first line with the real thought indented beneath it.
+while [[ $text == *$'\n' ]]; do text=${text%$'\n'}; done
+while [[ $text == $'\n'* ]]; do text=${text#$'\n'}; done
+
 fail() {
+  # The body goes out with a leading space on purpose: the real
+  # omarchy-notification-send only takes it positionally when it doesn't look
+  # like an option (`[[ $1 != -* ]]`), so a capture starting with "-" would be
+  # swallowed into option passthrough and the toast lost — the one trace a
+  # failed capture leaves. The space defeats that check and is invisible in
+  # the toast.
   command -v omarchy-notification-send >/dev/null 2>&1 &&
-    omarchy-notification-send "Jot couldn't save" "$text" || true
+    omarchy-notification-send "Jot couldn't save" " $text" || true
   exit 1
 }
 
