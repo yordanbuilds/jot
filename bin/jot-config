@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# jot-config — resolve Jot's config. Prints exactly two lines:
+#   1: the inbox file path, ~ expanded
+#   2: the line template (single-line by contract)
+# Missing file/keys fall back to defaults; broken JSON notifies and falls back.
+set -u
+
+CONFIG="$HOME/.config/jot/config.json"
+DEFAULT_FILE="$HOME/notes/inbox.md"
+DEFAULT_TEMPLATE='- [ ] %Y-%m-%d %H:%M {text}'
+
+file="" template=""
+if [[ -f $CONFIG ]]; then
+  if jq -e . "$CONFIG" >/dev/null 2>&1; then
+    file="$(jq -r '.file // empty' "$CONFIG")"
+    template="$(jq -r '.template // empty' "$CONFIG")"
+  else
+    command -v omarchy-notification-send >/dev/null 2>&1 &&
+      omarchy-notification-send "Jot" "config.json is invalid — using defaults" || true
+  fi
+fi
+
+[[ -n $file ]] || file="$DEFAULT_FILE"
+[[ -n $template ]] || template="$DEFAULT_TEMPLATE"
+file="${file/#\~/$HOME}"
+
+printf '%s\n%s\n' "$file" "$template"
