@@ -29,6 +29,7 @@ fi
 
 # --- Keybinding: SUPER+N, only if genuinely free -----------------------------
 bind_note="Press SUPER+N"
+mkdir -p "$(dirname "$BINDINGS")"
 if ! grep -q '>>> jot >>>' "$BINDINGS" 2>/dev/null; then
   taken=$(hyprctl -j binds 2>/dev/null |
     jq '[.[] | select(.modmask == 64 and (.key | ascii_upcase == "N"))] | length' 2>/dev/null || echo 0)
@@ -47,7 +48,7 @@ fi
 # --- Menu rows, only if absent -----------------------------------------------
 if ! grep -q '>>> jot menu >>>' "$MENU" 2>/dev/null; then
   mkdir -p "$(dirname "$MENU")"
-  [[ -e $MENU ]] || printf '{\n}\n' >"$MENU"
+  [[ -s $MENU ]] || printf '{\n}\n' >"$MENU"
   blocktmp="$(mktemp)"; tmp="$(mktemp)"
   trap 'rm -f "$blocktmp" "$tmp"' EXIT
   cat >"$blocktmp" <<EOF
@@ -58,8 +59,10 @@ if ! grep -q '>>> jot menu >>>' "$MENU" 2>/dev/null; then
   // <<< jot menu <<<
 EOF
   # Insert before the file's closing brace, adding a comma to the preceding
-  # entry if it lacks one (same approach as Rig's rig-menu-sync).
-  awk -v blockfile="$blocktmp" '
+  # entry if it lacks one (same approach as Rig's rig-menu-sync). A file with
+  # no closing brace on a line of its own is one we don't understand: say so
+  # and carry on, rather than dying here and leaving setup half-done forever.
+  if awk -v blockfile="$blocktmp" '
     { lines[NR] = $0 }
     END {
       last = 0
@@ -77,8 +80,11 @@ EOF
         print lines[i]
       }
     }
-  ' "$MENU" >"$tmp"
-  mv "$tmp" "$MENU"
+  ' "$MENU" >"$tmp"; then
+    mv "$tmp" "$MENU"
+  else
+    notify "Jot" "Couldn't add menu entries — add them by hand (see README)"
+  fi
 fi
 
 touch "$FLAG"

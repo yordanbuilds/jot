@@ -226,6 +226,38 @@ printf '{"file":"~/custom.md"}' >"$SB/.config/jot/config.json"
 run "$HERE/bin/jot-setup"
 check "setup: existing config preserved" grep -q 'custom.md' "$SB/.config/jot/config.json"
 
+# Setup never fails silently: a menu file it can't parse, or a missing hypr dir,
+# still leaves a finished, flagged setup that says what it couldn't do.
+
+fresh_sandbox
+: >"$SB/.config/omarchy/extensions/omarchy-menu.jsonc"   # 0-byte, not absent
+run "$HERE/bin/jot-setup" && rc=0 || rc=$?
+check "setup: empty menu file exits 0" [ "$rc" = "0" ]
+check "setup: empty menu file gets seeded and filled" \
+  grep -q '>>> jot menu >>>' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+check "setup: empty menu file still writes flag" [ -e "$SB/.config/jot/.setup-done" ]
+
+fresh_sandbox
+MENUF="$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+printf '{ "a": 1 }\n' >"$MENUF"                          # no lone-} line to insert before
+before="$(cat "$MENUF")"
+run "$HERE/bin/jot-setup" && rc=0 || rc=$?
+check "setup: unparseable menu exits 0" [ "$rc" = "0" ]
+check "setup: unparseable menu left untouched" [ "$before" = "$(cat "$MENUF")" ]
+check "setup: unparseable menu says so" grep -q "Couldn't add menu entries" "$LOG"
+check "setup: unparseable menu still binds" grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
+check "setup: unparseable menu still writes flag" [ -e "$SB/.config/jot/.setup-done" ]
+check "setup: unparseable menu still reports ready" \
+  grep -q '^omarchy-notification-send Jot is ready' "$LOG"
+
+fresh_sandbox
+rm -rf "$SB/.config/hypr"
+run "$HERE/bin/jot-setup" && rc=0 || rc=$?
+check "setup: missing hypr dir exits 0" [ "$rc" = "0" ]
+check "setup: missing hypr dir is created" [ -d "$SB/.config/hypr" ]
+check "setup: missing hypr dir still binds" grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
+check "setup: missing hypr dir still writes flag" [ -e "$SB/.config/jot/.setup-done" ]
+
 # --- summary -----------------------------------------------------------------
 
 echo
