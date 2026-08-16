@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# jot-uninstall — remove everything jot-setup added. Run by full path:
+#   ~/.config/omarchy/plugins/yordanbuilds.jot/bin/jot-uninstall [--purge]
+# Never touches your notes file. Finish with:
+#   omarchy plugin remove yordanbuilds.jot
+set -u
+
+BINDINGS="$HOME/.config/hypr/bindings.lua"
+MENU="$HOME/.config/omarchy/extensions/omarchy-menu.jsonc"
+
+[[ -f $BINDINGS ]] && sed -i '/>>> jot >>>/,/<<< jot <<</d' "$BINDINGS"
+[[ -f $MENU ]] && sed -i '/>>> jot menu >>>/,/<<< jot menu <<</d' "$MENU"
+
+purge="${1:-}"
+if [[ $purge != --purge && -t 0 && -d "$HOME/.config/jot" ]]; then
+  read -rp "Remove ~/.config/jot (config + setup flag)? [y/N] " ans
+  [[ ${ans,,} == y* ]] && purge=--purge
+fi
+[[ $purge == --purge ]] && rm -rf "$HOME/.config/jot"
+
+echo "Jot's keybinding and menu entries are removed."
+echo "Finish with: omarchy plugin remove yordanbuilds.jot"

@@ -258,6 +258,26 @@ check "setup: missing hypr dir is created" [ -d "$SB/.config/hypr" ]
 check "setup: missing hypr dir still binds" grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
 check "setup: missing hypr dir still writes flag" [ -e "$SB/.config/jot/.setup-done" ]
 
+# --- jot-uninstall -----------------------------------------------------------
+
+fresh_sandbox
+printf -- '-- mine\no.bind("SUPER + B", "Mine", "x")\n' >"$SB/.config/hypr/bindings.lua"
+printf '{\n  "personal": {"icon":"x","label":"Personal"}\n}\n' >"$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+run "$HERE/bin/jot-setup"
+run "$HERE/bin/jot-append" "keep me"
+run "$HERE/bin/jot-uninstall" </dev/null
+check "uninstall: binding block gone" not grep -q 'jot' "$SB/.config/hypr/bindings.lua"
+check "uninstall: user bindings survive" grep -q 'SUPER + B' "$SB/.config/hypr/bindings.lua"
+check "uninstall: menu rows gone" not grep -q 'trigger.jot' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+check "uninstall: user menu entries survive" grep -q 'Personal' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+check "uninstall: config kept without --purge" [ -f "$SB/.config/jot/config.json" ]
+check "uninstall: notes file untouched" grep -q 'keep me' "$SB/notes/inbox.md"
+
+fresh_sandbox
+run "$HERE/bin/jot-setup"
+run "$HERE/bin/jot-uninstall" --purge
+check "uninstall --purge: config dir removed" not test -d "$SB/.config/jot"
+
 # --- summary -----------------------------------------------------------------
 
 echo
