@@ -19,15 +19,13 @@ On first load, Jot sets itself up:
 - **Jot** appears in the Omarchy menu, under _Trigger_ — Jot down and Open inbox
 - `~/.config/jot/config.json` is created with the defaults
 
-Your keys stay yours: Jot binds nothing on its own. While no shortcut
-exists, the _Jot_ menu carries one more row — **Add SUPER+N shortcut** —
-and picking it writes the binding. Once the shortcut exists the row is
-gone, having nothing left to offer. If <kbd>SUPER</kbd>+<kbd>N</kbd>
-already belongs to something else, Jot says so and takes nothing.
-
-Away from the menu, the same row is a script:
+Jot doesn't bind a key on its own. Pick **Add SUPER+N shortcut** from the
+_Jot_ menu to add it — or run:
 
     ~/.config/omarchy/plugins/yordanbuilds.jot/bin/jot-bind-key
+
+If <kbd>SUPER</kbd>+<kbd>N</kbd> is taken, Jot tells you and changes
+nothing. Once bound, the row disappears.
 
 Prefer another key? Write it yourself in `~/.config/hypr/bindings.lua`:
 
