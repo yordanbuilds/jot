@@ -33,3 +33,38 @@ jobs:
         run: git clone --depth 1 https://github.com/basecamp/omarchy.git omarchy
       - name: Validate manifest
         run: bash omarchy/bin/omarchy-plugin-validate plugin
+
+  # tests/qml-smoke.sh had no home in CI, because it needs two things a bare
+  # runner does not have and skips itself without them. Both are installable:
+  # Quickshell's QML modules come from pacman (Arch ships them in `extra`), and
+  # Omarchy's shell kit comes from the clone below, handed over through
+  # OMARCHY_QMLLINT_SHELL — the seam the gate reads before falling back to a
+  # local install. So the job runs on the distro Omarchy runs.
+  #
+  # With both in place CI checks exactly what a dev machine checks: Jot.qml
+  # parses, and every qs.Ui / qs.Commons type and property name it writes is
+  # resolved against the real kit, so a typo here or a rename upstream fails
+  # this job. It does not check members reached through Style/Color — see the
+  # gate's own comment for why those cannot be told apart from correct ones.
+  qml-smoke:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt and Quickshell
+        run: pacman -Syu --noconfirm git qt6-declarative quickshell
+      - name: Fetch the Omarchy shell kit
+        run: git clone --depth 1 https://github.com/basecamp/omarchy.git /omarchy
+      - name: QML gate
+        env:
+          OMARCHY_QMLLINT_SHELL: /omarchy/shell
+        run: |
+          out="$(bash tests/qml-smoke.sh 2>&1)"; status=$?
+          printf '%s\n' "$out"
+          [ "$status" -eq 0 ] || exit 1
+          # Both halves are installed on purpose, so a gate that skipped itself
+          # or fell back to the weak path is a broken job, not a bare machine.
+          case "$out" in
+            *"kit resolved"*) ;;
+            *) echo "the QML gate did not resolve the shell kit"; exit 1 ;;
+          esac
