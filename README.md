@@ -26,8 +26,7 @@ Prefer another key? Write it yourself in `~/.config/hypr/bindings.lua`:
 
     o.bind("SUPER + SHIFT + N", "Jot", "omarchy-shell shell toggle yordanbuilds.jot '{}'")
 
-Everything Jot adds is marked and yours — edit or remove any of it, and
-Jot won't put it back.
+Everything Jot adds is marked and yours.
 
 ## Usage
 
@@ -39,6 +38,8 @@ Jot won't put it back.
 | <kbd>Enter</kbd>                        | Append to the inbox and close         |
 | <kbd>Esc</kbd> / empty <kbd>Enter</kbd> | Close without saving                  |
 | click outside the card                  | Close without saving                  |
+
+From a terminal: `jot` opens the same overlay, `jot inbox` opens your inbox.
 
 Multi-line thoughts land as one markdown todo with indented continuation
 lines:
