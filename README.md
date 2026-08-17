@@ -16,22 +16,31 @@ Jot needs [Omarchy](https://omarchy.org) 4 or newer.
 
 On first load, Jot sets itself up:
 
-- <kbd>SUPER</kbd>+<kbd>N</kbd> opens the capture overlay (only bound if
-  the key is genuinely free)
 - **Jot** appears in the Omarchy menu, under _Trigger_ — Jot down and Open inbox
 - `~/.config/jot/config.json` is created with the defaults
 
-Everything setup adds is marked and yours — edit or remove any of it, and
-Jot won't put it back. If SUPER+N was taken, bind any key you like in
-`~/.config/hypr/bindings.lua`:
+Your keys stay yours: Jot binds nothing on its own. While no shortcut
+exists, the _Jot_ menu carries one more row — **Add SUPER+N shortcut** —
+and picking it writes the binding. Once the shortcut exists the row is
+gone, having nothing left to offer. If <kbd>SUPER</kbd>+<kbd>N</kbd>
+already belongs to something else, Jot says so and takes nothing.
+
+Away from the menu, the same row is a script:
+
+    ~/.config/omarchy/plugins/yordanbuilds.jot/bin/jot-bind-key
+
+Prefer another key? Write it yourself in `~/.config/hypr/bindings.lua`:
 
     o.bind("SUPER + SHIFT + N", "Jot", "omarchy-shell shell toggle yordanbuilds.jot '{}'")
+
+Everything Jot adds is marked and yours — edit or remove any of it, and
+Jot won't put it back.
 
 ## Usage
 
 | Key                                     | What happens                          |
 | --------------------------------------- | ------------------------------------- |
-| <kbd>SUPER</kbd>+<kbd>N</kbd>           | Open the overlay                      |
+| <kbd>SUPER</kbd>+<kbd>N</kbd>           | Open the overlay, once you add it     |
 | type                                    | Compose the thought                   |
 | <kbd>Shift</kbd>+<kbd>Enter</kbd>       | New line — the thought stays one item |
 | <kbd>Enter</kbd>                        | Append to the inbox and close         |
@@ -64,9 +73,9 @@ timestamp at all.
     ~/.config/omarchy/plugins/yordanbuilds.jot/bin/jot-uninstall
     omarchy plugin remove yordanbuilds.jot
 
-The first command removes the keybinding and menu entries and asks about
-`~/.config/jot` (`--purge` skips the question). Your notes file is never
-touched.
+The first command removes the menu entries and the keybinding if you added
+one, then asks about `~/.config/jot` (`--purge` skips the question). Your
+notes file is never touched.
 
 ## License
 

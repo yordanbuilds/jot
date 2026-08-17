@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # jot-setup — one-time omakase setup, run by the plugin on first load.
-# Writes the default config, the SUPER+N keybinding (only if genuinely
-# free), and the Omarchy menu rows. Idempotent via ~/.config/jot/.setup-done;
-# --force re-runs it. Everything it writes sits in marked blocks and is
-# yours to edit — jot-setup never rewrites an existing block.
+# Writes the default config and the Omarchy menu rows. It takes no keybinding:
+# the SUPER+N shortcut is asked for, through jot-bind-key or the menu row that
+# offers it. Idempotent via ~/.config/jot/.setup-done; --force re-runs it.
+# Everything it writes sits in marked blocks and is yours to edit — jot-setup
+# never rewrites an existing block.
 set -euo pipefail
 
 SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
 PLUGIN_DIR="$(dirname "$(dirname "$SCRIPT")")"
 FLAG="$HOME/.config/jot/.setup-done"
-BINDINGS="$HOME/.config/hypr/bindings.lua"
 MENU="$HOME/.config/omarchy/extensions/omarchy-menu.jsonc"
 [[ -e $FLAG && ${1:-} != --force ]] && exit 0
 
@@ -27,25 +27,10 @@ if [[ ! -e "$HOME/.config/jot/config.json" ]]; then
 EOF
 fi
 
-# --- Keybinding: SUPER+N, only if genuinely free -----------------------------
-bind_note="Press SUPER+N"
-mkdir -p "$(dirname "$BINDINGS")"
-if ! grep -q '>>> jot >>>' "$BINDINGS" 2>/dev/null; then
-  taken=$(hyprctl -j binds 2>/dev/null |
-    jq '[.[] | select(.modmask == 64 and (.key | ascii_upcase == "N"))] | length' 2>/dev/null || echo 0)
-  if [[ ${taken:-0} -gt 0 ]]; then
-    bind_note="SUPER+N is taken — bind your own key (see README)"
-  else
-    cat >>"$BINDINGS" <<'EOF'
-
--- >>> jot >>>  Added once by Jot setup — yours to edit or remove.
-o.bind("SUPER + N", "Jot", "omarchy-shell shell toggle yordanbuilds.jot '{}'")
--- <<< jot <<<
-EOF
-  fi
-fi
-
 # --- Menu rows, only if absent -----------------------------------------------
+# The last row offers the key Jot never takes by itself, and its `when:` hides
+# it once a shortcut exists. Cheap on purpose: the menu batches every guard
+# into one bash script, and that script's speed is how fast the menu opens.
 if ! grep -q '>>> jot menu >>>' "$MENU" 2>/dev/null; then
   mkdir -p "$(dirname "$MENU")"
   [[ -s $MENU ]] || printf '{\n}\n' >"$MENU"
@@ -56,6 +41,7 @@ if ! grep -q '>>> jot menu >>>' "$MENU" 2>/dev/null; then
   "trigger.jot": { "icon": "󰎞", "label": "Jot", "aliases": ["jot"] },
   "trigger.jot.down": { "icon": "󰙏", "label": "Jot down", "action": "omarchy-shell shell toggle yordanbuilds.jot '{}'" },
   "trigger.jot.inbox": { "icon": "󰮒", "label": "Open inbox", "action": "$PLUGIN_DIR/bin/jot-open-inbox" },
+  "trigger.jot.bind-key": { "icon": "󰌌", "label": "Add SUPER+N shortcut", "action": "$PLUGIN_DIR/bin/jot-bind-key", "when": "! grep -q '>>> jot >>>' ~/.config/hypr/bindings.lua" },
   // <<< jot menu <<<
 EOF
   # Insert before the file's closing brace, adding a comma to the preceding
@@ -88,4 +74,4 @@ EOF
 fi
 
 touch "$FLAG"
-notify "Jot is ready" "$bind_note"
+notify "Jot is ready" "Jot down and Open inbox are in the Omarchy menu, and config.json is in ~/.config/jot. No key was taken — add the SUPER+N shortcut from the menu when you want it."

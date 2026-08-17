@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# jot-uninstall — remove everything jot-setup added. Run by full path:
+# jot-uninstall — remove everything Jot added, the shortcut included. Run by
+# full path:
 #   ~/.config/omarchy/plugins/yordanbuilds.jot/bin/jot-uninstall [--purge]
 # Never touches your notes file. Finish with:
 #   omarchy plugin remove yordanbuilds.jot
@@ -23,5 +24,5 @@ if [[ $purge != --purge && -t 0 && -d "$HOME/.config/jot" ]]; then
 fi
 [[ $purge == --purge ]] && rm -rf "$HOME/.config/jot"
 
-echo "Jot's keybinding and menu entries are removed."
+echo "Jot's menu entries are removed, and the keybinding with them if you added one."
 echo "Finish with: omarchy plugin remove yordanbuilds.jot"

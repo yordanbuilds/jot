@@ -237,15 +237,33 @@ chmod 755 "$SB/ro"
 fresh_sandbox
 run "$HERE/bin/jot-setup"
 check "setup: writes default config" grep -q '"file": "~/notes/inbox.md"' "$SB/.config/jot/config.json"
-check "setup: binds SUPER+N when free" grep -q 'o.bind("SUPER + N", "Jot"' "$SB/.config/hypr/bindings.lua"
-check "setup: binding sits in marked block" grep -q -- '-- >>> jot >>>' "$SB/.config/hypr/bindings.lua"
+# Setup keeps to what is reversible and invisible until sought. A key is
+# neither, so it never reaches for one — not even to check what holds it.
+check "setup: takes no keybinding" not grep -q 'jot' "$SB/.config/hypr/bindings.lua"
+check "setup: never asks what is bound" not grep -q '^hyprctl' "$LOG"
 MENUF="$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
 check "setup: menu rows added" grep -q '"trigger.jot.down"' "$MENUF"
 check "setup: menu open-inbox uses absolute path" grep -qF "$HERE/bin/jot-open-inbox" "$MENUF"
+check "setup: menu offers the shortcut" grep -q '"label": "Add SUPER+N shortcut"' "$MENUF"
+check "setup: shortcut row uses absolute path" grep -qF "$HERE/bin/jot-bind-key" "$MENUF"
 check "setup: menu block closes before brace" \
   bash -c 'tail -n 2 "$1" | head -n 1 | grep -q "<<< jot menu <<<"' _ "$MENUF"
 check "setup: flag written" [ -e "$SB/.config/jot/.setup-done" ]
 check "setup: ready notification" grep -q '^omarchy-notification-send Jot is ready' "$LOG"
+check "setup: ready notification says where the shortcut waits" \
+  grep -q 'add the SUPER+N shortcut from the menu' "$LOG"
+
+# That guard is the whole consent story in the menu: it has to answer "show
+# me" while no shortcut exists and "hide me" the moment one does. Run the
+# expression the menu would run, against the sandbox HOME.
+guard="$(grep -o '"when": "[^"]*"' "$MENUF" | head -1 | cut -d'"' -f4)"
+check "setup: shortcut row is guarded" [ -n "$guard" ]
+check "shortcut row shows while the key is unbound" \
+  bash -c "HOME='$SB'; $guard"
+printf -- '-- >>> jot >>>\nbind\n-- <<< jot <<<\n' >>"$SB/.config/hypr/bindings.lua"
+check "shortcut row hides once the binding exists" \
+  bash -c "HOME='$SB'; ! { $guard; }"
+sed -i '/>>> jot >>>/,/<<< jot <<</d' "$SB/.config/hypr/bindings.lua"
 
 before="$(cat "$SB/.config/hypr/bindings.lua")$(cat "$MENUF")"
 run "$HERE/bin/jot-setup"
@@ -259,26 +277,13 @@ check "setup: comma added to preceding menu entry" \
   grep -q '"personal": {"icon":"x","label":"Personal"},' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
 
 fresh_sandbox
-echo '[{"modmask":64,"key":"N"}]' >"$SB/hyprctl.out"
-run "$HERE/bin/jot-setup"
-check "setup: taken key not bound" not grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
-check "setup: taken key noted in notification" grep -q 'taken' "$LOG"
-
-fresh_sandbox
-printf -- '-- >>> jot >>>\no.bind("SUPER + M", "Jot", "custom")\n-- <<< jot <<<\n' >"$SB/.config/hypr/bindings.lua"
-run "$HERE/bin/jot-setup"
-check "setup: existing jot block untouched" \
-  [ "$(grep -c '>>> jot >>>' "$SB/.config/hypr/bindings.lua")" = "1" ]
-check "setup: existing jot block keeps custom key" not grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
-
-fresh_sandbox
 mkdir -p "$SB/.config/jot"
 printf '{"file":"~/custom.md"}' >"$SB/.config/jot/config.json"
 run "$HERE/bin/jot-setup"
 check "setup: existing config preserved" grep -q 'custom.md' "$SB/.config/jot/config.json"
 
-# Setup never fails silently: a menu file it can't parse, or a missing hypr dir,
-# still leaves a finished, flagged setup that says what it couldn't do.
+# Setup never fails silently: a menu file it can't parse still leaves a
+# finished, flagged setup that says what it couldn't do.
 
 fresh_sandbox
 : >"$SB/.config/omarchy/extensions/omarchy-menu.jsonc"   # 0-byte, not absent
@@ -296,18 +301,55 @@ run "$HERE/bin/jot-setup" && rc=0 || rc=$?
 check "setup: unparseable menu exits 0" [ "$rc" = "0" ]
 check "setup: unparseable menu left untouched" [ "$before" = "$(cat "$MENUF")" ]
 check "setup: unparseable menu says so" grep -q "Couldn't add menu entries" "$LOG"
-check "setup: unparseable menu still binds" grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
+check "setup: unparseable menu still writes config" [ -f "$SB/.config/jot/config.json" ]
 check "setup: unparseable menu still writes flag" [ -e "$SB/.config/jot/.setup-done" ]
 check "setup: unparseable menu still reports ready" \
   grep -q '^omarchy-notification-send Jot is ready' "$LOG"
 
+# --- jot-bind-key ------------------------------------------------------------
+# The shortcut, and the only thing that ever writes one. It reports through
+# notifications because the menu is where it runs from.
+
+fresh_sandbox
+BINDF="$SB/.config/hypr/bindings.lua"
+run "$HERE/bin/jot-bind-key" >/dev/null && rc=0 || rc=$?
+check "bind-key: exits 0 when the key is free" [ "$rc" = "0" ]
+check "bind-key: binds SUPER+N" grep -q 'o.bind("SUPER + N", "Jot"' "$BINDF"
+check "bind-key: binding sits in a marked block" grep -q -- '-- >>> jot >>>' "$BINDF"
+check "bind-key: says the shortcut is live" \
+  grep -q '^omarchy-notification-send Shortcut added SUPER+N opens Jot.' "$LOG"
+
+before="$(cat "$BINDF")"
+run "$HERE/bin/jot-bind-key" >/dev/null
+check "bind-key: second run changes nothing" [ "$before" = "$(cat "$BINDF")" ]
+check "bind-key: second run says it is already bound" \
+  grep -q 'SUPER+N already opens Jot.' "$LOG"
+
+# A key someone else holds is not Jot's to take, so it says so and stops —
+# the block that would have claimed it is never written.
+fresh_sandbox
+echo '[{"modmask":64,"key":"N"}]' >"$SB/hyprctl.out"
+run "$HERE/bin/jot-bind-key" >/dev/null && rc=0 || rc=$?
+check "bind-key: taken key exits non-zero" [ "$rc" != "0" ]
+check "bind-key: taken key is not bound" not grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
+check "bind-key: taken key names the fallback" \
+  grep -q '^omarchy-notification-send SUPER+N is taken' "$LOG"
+
+# A hand-edited block is the user's answer to this question already.
+fresh_sandbox
+printf -- '-- >>> jot >>>\no.bind("SUPER + M", "Jot", "custom")\n-- <<< jot <<<\n' >"$SB/.config/hypr/bindings.lua"
+run "$HERE/bin/jot-bind-key" >/dev/null
+check "bind-key: existing jot block untouched" \
+  [ "$(grep -c '>>> jot >>>' "$SB/.config/hypr/bindings.lua")" = "1" ]
+check "bind-key: existing jot block keeps its custom key" \
+  not grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
+
 fresh_sandbox
 rm -rf "$SB/.config/hypr"
-run "$HERE/bin/jot-setup" && rc=0 || rc=$?
-check "setup: missing hypr dir exits 0" [ "$rc" = "0" ]
-check "setup: missing hypr dir is created" [ -d "$SB/.config/hypr" ]
-check "setup: missing hypr dir still binds" grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
-check "setup: missing hypr dir still writes flag" [ -e "$SB/.config/jot/.setup-done" ]
+run "$HERE/bin/jot-bind-key" >/dev/null && rc=0 || rc=$?
+check "bind-key: missing hypr dir exits 0" [ "$rc" = "0" ]
+check "bind-key: missing hypr dir is created" [ -d "$SB/.config/hypr" ]
+check "bind-key: missing hypr dir still binds" grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
 
 # --- jot-uninstall -----------------------------------------------------------
 
@@ -315,6 +357,7 @@ fresh_sandbox
 printf -- '-- mine\no.bind("SUPER + B", "Mine", "x")\n' >"$SB/.config/hypr/bindings.lua"
 printf '{\n  "personal": {"icon":"x","label":"Personal"}\n}\n' >"$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
 run "$HERE/bin/jot-setup"
+run "$HERE/bin/jot-bind-key" >/dev/null
 run "$HERE/bin/jot-append" "keep me"
 run "$HERE/bin/jot-uninstall" </dev/null
 check "uninstall: binding block gone" not grep -q 'jot' "$SB/.config/hypr/bindings.lua"
@@ -339,10 +382,10 @@ run "$HERE/bin/jot-uninstall" </dev/null
 check "uninstall: setup flag cleared without --purge" not test -e "$SB/.config/jot/.setup-done"
 check "uninstall: config kept when the flag goes" [ -f "$SB/.config/jot/config.json" ]
 run "$HERE/bin/jot-setup"
-check "reinstall: binding returns without --force" \
-  grep -q 'o.bind("SUPER + N", "Jot"' "$SB/.config/hypr/bindings.lua"
 check "reinstall: menu rows return without --force" \
   grep -q '"trigger.jot.down"' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+check "reinstall: the shortcut is still asked for, not restored" \
+  not grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
 
 # --- summary -----------------------------------------------------------------
 

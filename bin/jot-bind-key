@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# jot-bind-key — bind SUPER+N to the capture overlay, when you ask for it.
+# Setup takes no key; this is the only thing that does. Run from the Omarchy
+# menu ("Add SUPER+N shortcut", a row that shows only while no shortcut
+# exists) or by full path:
+#   ~/.config/omarchy/plugins/yordanbuilds.jot/bin/jot-bind-key
+# The block it appends is marked and yours (see jot-uninstall).
+set -u
+
+BINDINGS="$HOME/.config/hypr/bindings.lua"
+
+# Jot speaks in toasts — the menu is where this is usually run from, and
+# stderr goes nowhere a user can see there. A shell caller gets the same line
+# on stdout, so running it by hand is never a silent act.
+say() { # <headline> <body>
+  command -v omarchy-notification-send >/dev/null 2>&1 &&
+    omarchy-notification-send "$1" "$2" || true
+  [[ -t 1 ]] && printf '%s\n' "$2"
+  return 0
+}
+
+if grep -q '>>> jot >>>' "$BINDINGS" 2>/dev/null; then
+  say "Jot" "SUPER+N already opens Jot."
+  exit 0
+fi
+
+taken=$(hyprctl -j binds 2>/dev/null |
+  jq '[.[] | select(.modmask == 64 and (.key | ascii_upcase == "N"))] | length' 2>/dev/null || echo 0)
+if [[ ${taken:-0} -gt 0 ]]; then
+  say "SUPER+N is taken" "Something else owns SUPER+N — bind Jot to a key you like (see README)."
+  exit 1
+fi
+
+if ! mkdir -p "$(dirname "$BINDINGS")" 2>/dev/null; then
+  say "Jot couldn't add the shortcut" "$BINDINGS isn't writable."
+  exit 1
+fi
+
+if ! cat >>"$BINDINGS" <<'EOF'
+
+-- >>> jot >>>  Added at your request — yours to edit or remove.
+o.bind("SUPER + N", "Jot", "omarchy-shell shell toggle yordanbuilds.jot '{}'")
+-- <<< jot <<<
+EOF
+then
+  say "Jot couldn't add the shortcut" "$BINDINGS isn't writable."
+  exit 1
+fi
+
+say "Shortcut added" "SUPER+N opens Jot."
