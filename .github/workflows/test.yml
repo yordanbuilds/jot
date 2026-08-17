@@ -4,6 +4,9 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1" # weekly: catch upstream contract changes without a push
 
 # Nothing here writes back to the repository, so the default token doesn't
 # need to be able to.
