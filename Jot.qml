@@ -12,7 +12,12 @@ Item {
   property var manifest: null
 
   readonly property string pluginId: manifest?.id || "yordanbuilds.jot"
-  readonly property string pluginDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/yordanbuilds.jot"
+  // The registry stamps the directory it loaded this plugin from onto the
+  // manifest, so a checkout anywhere — a clone under another name, a
+  // system-wide install — still finds its own bin/. The literal path is only
+  // the fallback for when nothing injected a manifest.
+  readonly property string pluginDir: manifest?.__sourceDir
+    || (Quickshell.env("HOME") + "/.config/omarchy/plugins/yordanbuilds.jot")
 
   property bool opened: false
   property string text: ""

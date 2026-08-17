@@ -17,10 +17,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Script tests
         run: bash tests/scripts.test.sh
-      - name: Manifest sanity
-        run: |
-          jq -e '.schemaVersion == 1
-                 and .id == "yordanbuilds.jot"
-                 and .kinds == ["overlay"]
-                 and .entryPoints.overlay == "Jot.qml"' manifest.json
-          test -f Jot.qml
+
+  # The manifest is checked by Omarchy's own validator rather than a local
+  # copy of its rules, so a tightened schema upstream fails here first.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+      - name: Fetch Omarchy
+        run: git clone --depth 1 https://github.com/basecamp/omarchy.git omarchy
+      - name: Validate manifest
+        run: bash omarchy/bin/omarchy-plugin-validate plugin

@@ -343,7 +343,12 @@ check "setup: menu offers the shortcut" grep -q '"label": "Add SUPER+N shortcut"
 check "setup: shortcut row uses absolute path" grep -qF "$HERE/bin/jot-bind-key" "$MENUF"
 check "setup: menu block closes before brace" \
   bash -c 'tail -n 2 "$1" | head -n 1 | grep -q "<<< jot menu <<<"' _ "$MENUF"
-check "setup: flag written" [ -e "$SB/.config/jot/.setup-done" ]
+# Aliases are reserved for names users already type; a new entry earns its way
+# in through its label and id (Omarchy's docs/menu.md).
+check "setup: menu rows claim no aliases" not grep -q 'aliases' "$MENUF"
+# The flag records what ran — that is state, not something you configure.
+check "setup: flag written" [ -e "$SB/.local/state/jot/.setup-done" ]
+check "setup: no flag under config" not test -e "$SB/.config/jot/.setup-done"
 check "setup: ready notification" grep -q '^omarchy-notification-send Jot is ready' "$LOG"
 check "setup: ready notification drops the menu pointer once it has asked" \
   not grep -q 'add the SUPER+N shortcut from the menu' "$LOG"
@@ -421,7 +426,7 @@ run "$HERE/bin/jot-setup" && rc=0 || rc=$?
 check "setup: empty menu file exits 0" [ "$rc" = "0" ]
 check "setup: empty menu file gets seeded and filled" \
   grep -q '>>> jot menu >>>' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
-check "setup: empty menu file still writes flag" [ -e "$SB/.config/jot/.setup-done" ]
+check "setup: empty menu file still writes flag" [ -e "$SB/.local/state/jot/.setup-done" ]
 
 fresh_sandbox
 MENUF="$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
@@ -432,7 +437,7 @@ check "setup: unparseable menu exits 0" [ "$rc" = "0" ]
 check "setup: unparseable menu left untouched" [ "$before" = "$(cat "$MENUF")" ]
 check "setup: unparseable menu says so" grep -q "Couldn't add menu entries" "$LOG"
 check "setup: unparseable menu still writes config" [ -f "$SB/.config/jot/config.json" ]
-check "setup: unparseable menu still writes flag" [ -e "$SB/.config/jot/.setup-done" ]
+check "setup: unparseable menu still writes flag" [ -e "$SB/.local/state/jot/.setup-done" ]
 check "setup: unparseable menu still reports ready" \
   grep -q '^omarchy-notification-send Jot is ready' "$LOG"
 
@@ -612,7 +617,7 @@ check "uninstall: declining keeps the menu rows" \
   grep -q 'trigger.jot' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
 check "uninstall: declining keeps the binding" grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
 check "uninstall: declining keeps the jot command" [ -L "$SB/.local/bin/jot" ]
-check "uninstall: declining keeps the setup flag" [ -e "$SB/.config/jot/.setup-done" ]
+check "uninstall: declining keeps the setup flag" [ -e "$SB/.local/state/jot/.setup-done" ]
 check "uninstall: declining never hands the plugin to omarchy" \
   not grep -q '^omarchy plugin remove' "$LOG"
 
@@ -665,7 +670,7 @@ check "uninstall: a missing omarchy still did the removals" not test -d "$SB/.co
 fresh_sandbox
 run "$HERE/bin/jot-setup"
 uninstall <<<$'y\nn' >"$SB/out" 2>&1
-check "uninstall: setup flag cleared without --purge" not test -e "$SB/.config/jot/.setup-done"
+check "uninstall: setup flag cleared without --purge" not test -e "$SB/.local/state/jot/.setup-done"
 check "uninstall: config kept when the flag goes" [ -f "$SB/.config/jot/config.json" ]
 run "$HERE/bin/jot-setup"
 check "reinstall: menu rows return without --force" \

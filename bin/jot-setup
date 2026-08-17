@@ -3,14 +3,16 @@
 # Writes the default config, links the jot command, and adds the Omarchy menu
 # rows. It takes no keybinding: the first load asks about SUPER+N through
 # jot-ask-key, and only that answer — or the menu row that waits behind it —
-# ever writes one. Idempotent via ~/.config/jot/.setup-done; --force re-runs
-# it. Everything it writes sits in marked blocks and is yours to edit —
+# ever writes one. Idempotent via ~/.local/state/jot/.setup-done; --force
+# re-runs it. Everything it writes sits in marked blocks and is yours to edit —
 # jot-setup never rewrites an existing one.
 set -euo pipefail
 
 SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
 PLUGIN_DIR="$(dirname "$(dirname "$SCRIPT")")"
-FLAG="$HOME/.config/jot/.setup-done"
+# State, not config: the flag records what ran, and nothing about it is yours
+# to edit.
+FLAG="$HOME/.local/state/jot/.setup-done"
 MENU="$HOME/.config/omarchy/extensions/omarchy-menu.jsonc"
 first_run=true
 [[ -e $FLAG ]] && first_run=false
@@ -52,7 +54,7 @@ if ! grep -q '>>> jot menu >>>' "$MENU" 2>/dev/null; then
   trap 'rm -f "$blocktmp" "$tmp"' EXIT
   cat >"$blocktmp" <<EOF
   // >>> jot menu >>>  Added once by Jot setup — yours to edit or remove.
-  "trigger.jot": { "icon": "󰎞", "label": "Jot", "aliases": ["jot"] },
+  "trigger.jot": { "icon": "󰎞", "label": "Jot" },
   "trigger.jot.down": { "icon": "󰙏", "label": "Jot down", "action": "omarchy-shell shell toggle yordanbuilds.jot '{}'" },
   "trigger.jot.inbox": { "icon": "󰮒", "label": "Open inbox", "action": "$PLUGIN_DIR/bin/jot-open-inbox" },
   "trigger.jot.bind-key": { "icon": "󰌌", "label": "Add SUPER+N shortcut", "action": "$PLUGIN_DIR/bin/jot-bind-key", "when": "! grep -q '>>> jot >>>' ~/.config/hypr/bindings.lua" },
@@ -87,6 +89,7 @@ EOF
   fi
 fi
 
+mkdir -p "$(dirname "$FLAG")"
 touch "$FLAG"
 
 # The key question comes to you, once, seconds after the install: jot-ask-key

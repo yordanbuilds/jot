@@ -42,7 +42,7 @@ if [[ -L $BIN_DIR/jot ]]; then rm -f "$BIN_DIR/jot"; fi
 # The setup flag is our bookkeeping, not your data, so it goes unconditionally:
 # leaving it behind would make a later reinstall no-op into a dead plugin —
 # jot-setup would see the flag and skip the binding and menu rows entirely.
-rm -f "$HOME/.config/jot/.setup-done"
+rm -f "$HOME/.local/state/jot/.setup-done"
 
 [[ $purge == --purge ]] && rm -rf "$HOME/.config/jot"
 
