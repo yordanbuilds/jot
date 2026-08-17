@@ -1,26 +1,49 @@
 #!/usr/bin/env bash
 # jot-uninstall — remove everything Jot added, the shortcut and the plugin
-# itself included. Run by full path:
+# itself included. Reached as `jot uninstall [--purge]`, or by full path:
 #   ~/.config/omarchy/plugins/yordanbuilds.jot/bin/jot-uninstall [--purge]
 # Never touches your notes file.
 set -u
 
 BINDINGS="$HOME/.config/hypr/bindings.lua"
 MENU="$HOME/.config/omarchy/extensions/omarchy-menu.jsonc"
+BIN_DIR="${JOT_BIN_DIR:-$HOME/.local/bin}"
+
+# Both questions are asked the same way: gum where there is a terminal to draw
+# in, a plain read where there isn't. A closed stdin reads as "no", so nothing
+# is removed by a run that was never answered.
+confirm() { # <prompt>
+  if command -v gum >/dev/null 2>&1 && [[ -t 0 && -t 1 ]]; then
+    gum confirm "$1"
+  else
+    printf '%s [y/N] ' "$1"
+    local r
+    read -r r || return 1
+    [[ ${r,,} == y* ]]
+  fi
+}
+
+echo "This removes Jot: the plugin, the menu entries, the jot command, and the SUPER+N binding if you added one. Your notes stay."
+confirm "Remove Jot?" || { echo "Nothing was removed."; exit 0; }
+
+# Asked before anything is touched, so declining either question leaves the
+# machine exactly as it was. --purge is that answer given up front.
+purge="${1:-}"
+if [[ $purge != --purge && -d "$HOME/.config/jot" ]]; then
+  confirm "Remove ~/.config/jot (your config)?" && purge=--purge
+fi
 
 [[ -f $BINDINGS ]] && sed -i '/>>> jot >>>/,/<<< jot <<</d' "$BINDINGS"
 [[ -f $MENU ]] && sed -i '/>>> jot menu >>>/,/<<< jot menu <<</d' "$MENU"
+
+# Setup promised to leave a `jot` it did not create alone, and so does this.
+if [[ -L $BIN_DIR/jot ]]; then rm -f "$BIN_DIR/jot"; fi
 
 # The setup flag is our bookkeeping, not your data, so it goes unconditionally:
 # leaving it behind would make a later reinstall no-op into a dead plugin —
 # jot-setup would see the flag and skip the binding and menu rows entirely.
 rm -f "$HOME/.config/jot/.setup-done"
 
-purge="${1:-}"
-if [[ $purge != --purge && -t 0 && -d "$HOME/.config/jot" ]]; then
-  read -rp "Remove ~/.config/jot (your config)? [y/N] " ans
-  [[ ${ans,,} == y* ]] && purge=--purge
-fi
 [[ $purge == --purge ]] && rm -rf "$HOME/.config/jot"
 
 echo "Jot's menu entries are removed, and the keybinding with them if you added one."

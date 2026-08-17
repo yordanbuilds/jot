@@ -2,8 +2,7 @@
 # jot-bind-key — bind SUPER+N to the capture overlay, when you ask for it.
 # Setup takes no key; this is the only thing that does. Run from the Omarchy
 # menu ("Add SUPER+N shortcut", a row that shows only while no shortcut
-# exists) or by full path:
-#   ~/.config/omarchy/plugins/yordanbuilds.jot/bin/jot-bind-key
+# exists) or as `jot bind-key`.
 # The block it appends is marked and yours (see jot-uninstall).
 set -u
 

@@ -77,6 +77,72 @@ waitlogged() { # <substring>
   return 1
 }
 
+# --- jot (the dispatcher) ----------------------------------------------------
+# The front door: bare `jot` is the overlay, every verb is the sibling script
+# of that name. The dispatcher is copied into a sandbox plugin dir whose
+# siblings are recording stubs — so routing is proven without a single real
+# setup, bind, or uninstall running.
+
+dispatcher_sandbox() {
+  fresh_sandbox
+  DISP="$SB/plugin/bin"
+  mkdir -p "$DISP"
+  cp "$HERE/bin/jot" "$DISP/jot"
+  for s in jot-open-inbox jot-bind-key jot-setup jot-uninstall; do
+    cat >"$DISP/$s" <<SHIM
+#!/usr/bin/env bash
+echo "$s \$*" >>"$LOG"
+SHIM
+    chmod +x "$DISP/$s"
+  done
+  cat >"$SB/bin/omarchy-shell" <<SHIM
+#!/usr/bin/env bash
+echo "omarchy-shell \$*" >>"$LOG"
+SHIM
+  chmod +x "$SB/bin/omarchy-shell"
+}
+
+dispatcher_sandbox
+run "$DISP/jot"
+check "jot: bare command toggles the overlay" \
+  grep -q "^omarchy-shell shell toggle yordanbuilds.jot {}$" "$LOG"
+
+dispatcher_sandbox
+run "$DISP/jot" inbox
+check "jot: inbox routes to jot-open-inbox" grep -q '^jot-open-inbox' "$LOG"
+
+dispatcher_sandbox
+run "$DISP/jot" bind-key
+check "jot: bind-key routes to jot-bind-key" grep -q '^jot-bind-key' "$LOG"
+
+dispatcher_sandbox
+run "$DISP/jot" setup --force
+check "jot: setup routes with its flags" grep -q '^jot-setup --force$' "$LOG"
+
+dispatcher_sandbox
+run "$DISP/jot" uninstall --purge
+check "jot: uninstall routes with its flags" grep -q '^jot-uninstall --purge$' "$LOG"
+
+# The link in ~/.local/bin is how anyone actually runs this, and $BASH_SOURCE
+# there names the link, not the script. Resolving it is what keeps the siblings
+# findable — this is the test that fails if the resolution is dropped.
+dispatcher_sandbox
+ln -s "$DISP/jot" "$SB/bin/jot"
+run jot inbox
+check "jot: routes the same through a symlink on PATH" grep -q '^jot-open-inbox' "$LOG"
+
+dispatcher_sandbox
+out="$(run "$DISP/jot" wat 2>&1)" && rc=0 || rc=$?
+check "jot: unknown verb exits 1" [ "$rc" = "1" ]
+check "jot: unknown verb says what it didn't understand" grep -q 'unknown command: wat' <<<"$out"
+check "jot: unknown verb prints the usage" grep -q '^Usage:' <<<"$out"
+check "jot: unknown verb runs nothing" [ ! -s "$LOG" ]
+
+dispatcher_sandbox
+out="$(run "$DISP/jot" --help)" && rc=0 || rc=$?
+check "jot: --help exits 0" [ "$rc" = "0" ]
+check "jot: --help lists the verbs" grep -q 'jot uninstall' <<<"$out"
+
 # --- jot-config --------------------------------------------------------------
 
 fresh_sandbox
@@ -311,6 +377,41 @@ printf '{"file":"~/custom.md"}' >"$SB/.config/jot/config.json"
 run "$HERE/bin/jot-setup"
 check "setup: existing config preserved" grep -q 'custom.md' "$SB/.config/jot/config.json"
 
+# The jot command is one symlink into ~/.local/bin — under the sandbox HOME
+# here, never the real one. JOT_BIN_DIR is the seam for a PATH dir elsewhere.
+
+fresh_sandbox
+run "$HERE/bin/jot-setup"
+check "setup: links the jot command" [ -L "$SB/.local/bin/jot" ]
+check "setup: the link points at this checkout" \
+  [ "$(readlink "$SB/.local/bin/jot")" = "$(readlink -f "$HERE/bin/jot")" ]
+check "setup: the link is a working jot" \
+  bash -c '"$1/.local/bin/jot" --help | grep -q "^Usage:"' _ "$SB"
+
+fresh_sandbox
+run env JOT_BIN_DIR="$SB/mybin" "$HERE/bin/jot-setup"
+check "setup: JOT_BIN_DIR moves the link" [ -L "$SB/mybin/jot" ]
+check "setup: the default dir stays empty then" not test -e "$SB/.local/bin/jot"
+
+# A jot on your PATH that we didn't create is yours — setup says so and leaves
+# it. A link to a checkout the plugin has outgrown is ours, and is repointed.
+
+fresh_sandbox
+mkdir -p "$SB/.local/bin"
+echo 'mine' >"$SB/.local/bin/jot"
+out="$(run "$HERE/bin/jot-setup" 2>&1)"
+check "setup: a jot it didn't create is left alone" \
+  [ "$(cat "$SB/.local/bin/jot")" = "mine" ]
+check "setup: it says the jot was left alone" grep -q 'is not our symlink' <<<"$out"
+check "setup: the rest of setup still ran" [ -f "$SB/.config/jot/config.json" ]
+
+fresh_sandbox
+mkdir -p "$SB/.local/bin"
+ln -s "$SB/gone/bin/jot" "$SB/.local/bin/jot"
+run "$HERE/bin/jot-setup"
+check "setup: a link to an older checkout is repointed" \
+  [ "$(readlink "$SB/.local/bin/jot")" = "$(readlink -f "$HERE/bin/jot")" ]
+
 # Setup never fails silently: a menu file it can't parse still leaves a
 # finished, flagged setup that says what it couldn't do.
 
@@ -448,6 +549,10 @@ check "bind-key: missing hypr dir still binds" grep -q 'SUPER + N' "$SB/.config/
 # suite. Every run below goes through this wrapper, and each one re-proves that
 # `omarchy` resolves to the sandbox stub — a canary the real omarchy would
 # reject as an unknown command. No proof, no run, and a loud failure.
+#
+# The answers are fed as a here-string and the output captured with a redirect,
+# both on the call itself: a pipeline or a command substitution would run the
+# wrapper in a subshell, where a canary failure could no longer count itself.
 uninstall() { # <args...>
   if [[ "$(run omarchy --canary 2>/dev/null)" != STUB ]]; then
     FAIL=$((FAIL+1))
@@ -463,7 +568,11 @@ printf '{\n  "personal": {"icon":"x","label":"Personal"}\n}\n' >"$SB/.config/oma
 run "$HERE/bin/jot-setup"
 run "$HERE/bin/jot-bind-key" >/dev/null
 run "$HERE/bin/jot-append" "keep me"
-uninstall </dev/null
+uninstall <<<$'y\nn' >"$SB/out" 2>&1
+check "uninstall: says what it is about to remove" grep -q 'This removes Jot' "$SB/out"
+check "uninstall: asks for the whole thing first" grep -qF 'Remove Jot? [y/N]' "$SB/out"
+check "uninstall: asks about the config second" grep -qF 'your config)? [y/N]' "$SB/out"
+check "uninstall: the jot command's link is gone" not test -e "$SB/.local/bin/jot"
 check "uninstall: binding block gone" not grep -q 'jot' "$SB/.config/hypr/bindings.lua"
 check "uninstall: user bindings survive" grep -q 'SUPER + B' "$SB/.config/hypr/bindings.lua"
 check "uninstall: menu rows gone" not grep -q 'trigger.jot' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
@@ -476,10 +585,57 @@ check "uninstall: hands the plugin to omarchy" \
 
 fresh_sandbox
 run "$HERE/bin/jot-setup"
-uninstall --purge
+uninstall --purge <<<y >"$SB/out" 2>&1
 check "uninstall --purge: config dir removed" not test -d "$SB/.config/jot"
 check "uninstall --purge: plugin still removed after the purge" \
   grep -q '^omarchy plugin remove yordanbuilds.jot --yes$' "$LOG"
+# --purge is the config answer given up front — the question it skips is that
+# one, never the confirmation that anything happens at all.
+check "uninstall --purge: still asks for the whole thing" grep -qF 'Remove Jot? [y/N]' "$SB/out"
+check "uninstall --purge: does not ask about the config" not grep -q 'your config' "$SB/out"
+
+# Saying no is a full stop: it happens before the first removal, so the machine
+# is exactly as it was — and an unanswered run (no stdin at all) says no too.
+
+fresh_sandbox
+run "$HERE/bin/jot-setup"
+run "$HERE/bin/jot-bind-key" >/dev/null
+uninstall <<<n >"$SB/out" 2>&1 && rc=0 || rc=$?
+check "uninstall: declining exits 0" [ "$rc" = "0" ]
+check "uninstall: declining says nothing was removed" grep -q 'Nothing was removed' "$SB/out"
+check "uninstall: declining never asks about the config" not grep -q 'your config' "$SB/out"
+check "uninstall: declining keeps the menu rows" \
+  grep -q 'trigger.jot' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+check "uninstall: declining keeps the binding" grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
+check "uninstall: declining keeps the jot command" [ -L "$SB/.local/bin/jot" ]
+check "uninstall: declining keeps the setup flag" [ -e "$SB/.config/jot/.setup-done" ]
+check "uninstall: declining never hands the plugin to omarchy" \
+  not grep -q '^omarchy plugin remove' "$LOG"
+
+fresh_sandbox
+run "$HERE/bin/jot-setup"
+uninstall </dev/null >"$SB/out" 2>&1 && rc=0 || rc=$?
+check "uninstall: an unanswered run exits 0" [ "$rc" = "0" ]
+check "uninstall: an unanswered run removes nothing" \
+  grep -q 'trigger.jot' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+check "uninstall: an unanswered run keeps the config" [ -f "$SB/.config/jot/config.json" ]
+
+# Yes to both is the purge, asked for one question later.
+fresh_sandbox
+run "$HERE/bin/jot-setup"
+uninstall <<<$'y\ny' >"$SB/out" 2>&1
+check "uninstall: yes to the config question purges" not test -d "$SB/.config/jot"
+check "uninstall: yes to both still removes the plugin" \
+  grep -q '^omarchy plugin remove yordanbuilds.jot --yes$' "$LOG"
+
+# A jot on the PATH that setup refused to create is not this script's to
+# delete either — only our own symlink goes.
+fresh_sandbox
+run "$HERE/bin/jot-setup"
+rm -f "$SB/.local/bin/jot"
+echo 'mine' >"$SB/.local/bin/jot"
+uninstall <<<$'y\nn' >"$SB/out" 2>&1
+check "uninstall: a jot we didn't link survives" [ "$(cat "$SB/.local/bin/jot")" = "mine" ]
 
 # No omarchy to hand the plugin to: say which command finishes the job instead
 # of dying on a bare "command not found". PATH is cut down to symlinks for the
@@ -492,7 +648,7 @@ ln -s "$(command -v sed)" "$SB/minbin/sed"
 ln -s "$(command -v rm)" "$SB/minbin/rm"
 check "uninstall: the cut-down PATH has no omarchy at all" \
   bash -c 'PATH="$1"; ! command -v omarchy >/dev/null' _ "$SB/minbin"
-out="$(HOME="$SB" PATH="$SB/minbin" "$BASH" "$HERE/bin/jot-uninstall" --purge 2>&1)"; rc=$?
+out="$(HOME="$SB" PATH="$SB/minbin" "$BASH" "$HERE/bin/jot-uninstall" --purge <<<y 2>&1)"; rc=$?
 check "uninstall: a missing omarchy exits 0" [ "$rc" = "0" ]
 check "uninstall: a missing omarchy names the command to finish with" \
   grep -q 'finish with: omarchy plugin remove yordanbuilds.jot' <<<"$out"
@@ -504,7 +660,7 @@ check "uninstall: a missing omarchy still did the removals" not test -d "$SB/.co
 
 fresh_sandbox
 run "$HERE/bin/jot-setup"
-uninstall </dev/null
+uninstall <<<$'y\nn' >"$SB/out" 2>&1
 check "uninstall: setup flag cleared without --purge" not test -e "$SB/.config/jot/.setup-done"
 check "uninstall: config kept when the flag goes" [ -f "$SB/.config/jot/config.json" ]
 run "$HERE/bin/jot-setup"

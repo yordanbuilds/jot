@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # jot-setup — one-time omakase setup, run by the plugin on first load.
-# Writes the default config and the Omarchy menu rows. It takes no keybinding:
-# the first load asks about SUPER+N through jot-ask-key, and only that answer —
-# or the menu row that waits behind it — ever writes one. Idempotent via
-# ~/.config/jot/.setup-done; --force re-runs it. Everything it writes sits in
-# marked blocks and is yours to edit — jot-setup never rewrites an existing one.
+# Writes the default config, links the jot command, and adds the Omarchy menu
+# rows. It takes no keybinding: the first load asks about SUPER+N through
+# jot-ask-key, and only that answer — or the menu row that waits behind it —
+# ever writes one. Idempotent via ~/.config/jot/.setup-done; --force re-runs
+# it. Everything it writes sits in marked blocks and is yours to edit —
+# jot-setup never rewrites an existing one.
 set -euo pipefail
 
 SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -18,6 +19,17 @@ first_run=true
 notify() { command -v omarchy-notification-send >/dev/null 2>&1 && omarchy-notification-send "$1" "$2" || true; }
 
 mkdir -p "$HOME/.config/jot"
+
+# --- The jot command, on your PATH -------------------------------------------
+# One name for the lifecycle, so uninstalling is `jot uninstall` and not a path
+# nobody remembers. A `jot` that isn't a symlink is something you put there,
+# and it stays yours; a link to an older checkout is ours to repoint.
+BIN_DIR="${JOT_BIN_DIR:-$HOME/.local/bin}"
+if [[ -e $BIN_DIR/jot && ! -L $BIN_DIR/jot ]]; then
+  echo "jot: $BIN_DIR/jot is not our symlink — left it alone"
+elif ! { mkdir -p "$BIN_DIR" && ln -sfn "$PLUGIN_DIR/bin/jot" "$BIN_DIR/jot"; } 2>/dev/null; then
+  notify "Jot" "Couldn't put the jot command on your PATH — $BIN_DIR isn't writable"
+fi
 
 # --- Default config, only if absent ------------------------------------------
 if [[ ! -e "$HOME/.config/jot/config.json" ]]; then

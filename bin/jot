@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# jot — the CLI face of the Jot Omarchy plugin (yordanbuilds.jot). Bare `jot`
+# toggles the capture overlay, the same call the keybinding and the menu row
+# make; every verb hands off to the script of that name beside this one, so
+# the lifecycle has a short name instead of a plugin path.
+set -euo pipefail
+
+# Resolved, not assumed: this file is reached through a symlink in
+# ~/.local/bin, and the siblings it execs live next to the real one.
+SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+HERE="$(dirname "$SCRIPT")"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  jot                       open the capture overlay
+  jot inbox                 open your inbox in the Omarchy editor
+  jot bind-key              bind SUPER+N to the overlay
+  jot setup [--force]       re-run first-load setup (config, menu, this link)
+  jot uninstall [--purge]   remove Jot and everything setup added
+USAGE
+}
+
+cmd="${1:-}"
+(($# > 0)) && shift
+case "$cmd" in
+  "") exec omarchy-shell shell toggle yordanbuilds.jot '{}' ;;
+  -h|--help) usage; exit 0 ;;
+  inbox) exec "$HERE/jot-open-inbox" ;;
+  bind-key) exec "$HERE/jot-bind-key" ;;
+  setup) exec "$HERE/jot-setup" "$@" ;;
+  uninstall) exec "$HERE/jot-uninstall" "$@" ;;
+  *) echo "jot: unknown command: $cmd" >&2; usage >&2; exit 1 ;;
+esac

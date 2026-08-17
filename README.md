@@ -18,8 +18,9 @@ On first load:
 
 - **Jot** appears in the Omarchy menu, under _Trigger_ — Jot down and Open inbox
 - `~/.config/jot/config.json` is created with the defaults
+- the `jot` command lands on your PATH — `jot`, `jot inbox`, `jot uninstall`
 - Jot asks about the <kbd>SUPER</kbd>+<kbd>N</kbd> shortcut — decline, and
-  **Add SUPER+N shortcut** waits in the menu (or `bin/jot-bind-key`)
+  **Add SUPER+N shortcut** waits in the menu (or `jot bind-key`)
 
 Prefer another key? Write it yourself in `~/.config/hypr/bindings.lua`:
 
@@ -62,10 +63,10 @@ timestamp at all.
 
 ## Uninstall
 
-    ~/.config/omarchy/plugins/yordanbuilds.jot/bin/jot-uninstall
+    jot uninstall
 
-It asks about `~/.config/jot` (`--purge` skips the question), then removes
-the plugin itself. Your notes file is never touched.
+It confirms, asks about `~/.config/jot` (`--purge` skips that question), then
+removes the plugin itself. Your notes file is never touched.
 
 ## License
 
