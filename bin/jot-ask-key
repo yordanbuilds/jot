@@ -31,11 +31,23 @@ key_free() {
 if [[ ${1:-} == --prompt ]]; then
   # The window took a moment to open; the answer may already be in.
   key_free || exit 0
+  # This window is the whole disclosure: it says what setup already added, then
+  # asks for the one thing setup never took. Styling only when stdout is a
+  # terminal, so piped output stays the plain words; literal escapes, so no
+  # tput or terminfo db.
+  if [[ -t 1 ]]; then
+    BOLD=$'\e[1m'; DIM=$'\e[2m'; OFF=$'\e[0m'
+  else
+    BOLD=''; DIM=''; OFF=''
+  fi
+  printf '%s\n' "${BOLD}Jot is ready${OFF}"
+  printf '%s\n' "${DIM}menu entries · ~/.config/jot/config.json · the jot command on your PATH${OFF}"
+  printf '\n'
   answer=n
   if command -v gum >/dev/null 2>&1 && [[ -t 0 ]]; then
-    gum confirm "Jot is ready. Add the SUPER+N shortcut?" && answer=y
+    gum confirm "Add the SUPER+N shortcut?" && answer=y
   else
-    printf 'Jot is ready. Add the SUPER+N shortcut? [y/N] '
+    printf 'Add the SUPER+N shortcut? [y/N] '
     read -r reply || reply=""
     [[ $reply == [Yy]* ]] && answer=y
   fi

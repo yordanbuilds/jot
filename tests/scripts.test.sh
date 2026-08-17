@@ -475,6 +475,10 @@ check "ask: a missing launcher keeps the menu pointer" \
 fresh_sandbox
 out="$(printf 'y\n' | run "$HERE/bin/jot-ask-key" --prompt 2>&1)"; rc=$?
 check "prompt: asks in one line" grep -q 'Add the SUPER+N shortcut?' <<<"$out"
+check "prompt: opens with the ready line" grep -q '^Jot is ready$' <<<"$out"
+check "prompt: the summary names what setup added" \
+  grep -q '^menu entries · ~/.config/jot/config.json · the jot command on your PATH$' <<<"$out"
+check "prompt: piped output stays plain" [ "$out" = "${out//$'\e'/}" ]
 check "prompt: yes binds the shortcut" grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
 check "prompt: yes exits cleanly" [ "$rc" = "0" ]
 
