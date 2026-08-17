@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 # jot-setup — one-time omakase setup, run by the plugin on first load.
 # Writes the default config and the Omarchy menu rows. It takes no keybinding:
-# the SUPER+N shortcut is asked for, through jot-bind-key or the menu row that
-# offers it. Idempotent via ~/.config/jot/.setup-done; --force re-runs it.
-# Everything it writes sits in marked blocks and is yours to edit — jot-setup
-# never rewrites an existing block.
+# the first load asks about SUPER+N through jot-ask-key, and only that answer —
+# or the menu row that waits behind it — ever writes one. Idempotent via
+# ~/.config/jot/.setup-done; --force re-runs it. Everything it writes sits in
+# marked blocks and is yours to edit — jot-setup never rewrites an existing one.
 set -euo pipefail
 
 SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
 PLUGIN_DIR="$(dirname "$(dirname "$SCRIPT")")"
 FLAG="$HOME/.config/jot/.setup-done"
 MENU="$HOME/.config/omarchy/extensions/omarchy-menu.jsonc"
-[[ -e $FLAG && ${1:-} != --force ]] && exit 0
+first_run=true
+[[ -e $FLAG ]] && first_run=false
+[[ $first_run == false && ${1:-} != --force ]] && exit 0
 
 notify() { command -v omarchy-notification-send >/dev/null 2>&1 && omarchy-notification-send "$1" "$2" || true; }
 
@@ -74,4 +76,16 @@ EOF
 fi
 
 touch "$FLAG"
-notify "Jot is ready" "Jot down and Open inbox are in the Omarchy menu, and config.json is in ~/.config/jot. No key was taken — add the SUPER+N shortcut from the menu when you want it."
+
+# The key question comes to you, once, seconds after the install: jot-ask-key
+# opens a floating terminal and asks. Nonzero means it stayed quiet — the key is
+# taken, a binding already exists, or there's no launcher to ask through — and
+# then the notification is what points at the menu row instead.
+asked=false
+if [[ $first_run == true ]] && "$PLUGIN_DIR/bin/jot-ask-key"; then asked=true; fi
+
+if [[ $asked == true ]]; then
+  notify "Jot is ready" "Jot down and Open inbox are in the Omarchy menu, and config.json is in ~/.config/jot."
+else
+  notify "Jot is ready" "Jot down and Open inbox are in the Omarchy menu, and config.json is in ~/.config/jot. No key was taken — add the SUPER+N shortcut from the menu when you want it."
+fi

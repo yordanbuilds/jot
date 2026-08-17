@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# jot-ask-key — the one time Jot asks about the SUPER+N shortcut.
+# Two hats in one file. With no argument it decides whether the question is
+# worth asking and opens a small floating terminal to ask it; exit 0 means it
+# asked, nonzero means it stayed quiet and the caller should say where the
+# shortcut waits instead. With --prompt it *is* that question, running inside
+# the terminal. Only jot-setup's first run comes through here — the menu row
+# and jot-bind-key are the late path, and they bind without asking.
+set -uo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+BIN="$(dirname "$SELF")"
+BINDINGS="$HOME/.config/hypr/bindings.lua"
+LAUNCHER="${JOT_ASK_LAUNCHER:-omarchy-launch-floating-terminal-with-presentation}"
+
+# Free means no block of ours and nothing else holding the key — the same
+# question jot-bind-key asks before it writes, asked here first so a taken key
+# costs you no window at all. Anything but a plain number means we don't know,
+# and not knowing is no reason to withhold the question: jot-bind-key checks
+# again before it writes anything.
+key_free() {
+  grep -q '>>> jot >>>' "$BINDINGS" 2>/dev/null && return 1
+  local binds taken
+  binds=$(hyprctl -j binds 2>/dev/null || true)
+  taken=$(jq '[.[] | select(.modmask == 64 and (.key | ascii_upcase == "N"))] | length' \
+    <<<"$binds" 2>/dev/null || true)
+  [[ $taken =~ ^[0-9]+$ ]] || taken=0
+  (( taken == 0 ))
+}
+
+if [[ ${1:-} == --prompt ]]; then
+  # The window took a moment to open; the answer may already be in.
+  key_free || exit 0
+  answer=n
+  if command -v gum >/dev/null 2>&1 && [[ -t 0 ]]; then
+    gum confirm "Jot is ready. Add the SUPER+N shortcut?" && answer=y
+  else
+    printf 'Jot is ready. Add the SUPER+N shortcut? [y/N] '
+    read -r reply || reply=""
+    [[ $reply == [Yy]* ]] && answer=y
+  fi
+  if [[ $answer == y ]]; then
+    "$BIN/jot-bind-key"
+  else
+    echo "You can add it any time from the Jot menu."
+  fi
+  exit 0
+fi
+
+key_free || exit 1
+command -v "$LAUNCHER" >/dev/null 2>&1 || exit 1
+# Backgrounded: the launcher need not return before the window closes, and
+# setup is what the plugin waits on at load.
+"$LAUNCHER" "$(printf '%q --prompt' "$SELF")" >/dev/null 2>&1 &
+exit 0

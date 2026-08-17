@@ -44,9 +44,28 @@ echo "hyprctl \$*" >>"$LOG"
 cat "$SB/hyprctl.out" 2>/dev/null || echo "[]"
 SHIM
   chmod +x "$SB/bin/hyprctl"
+  # The floating-terminal launcher is shimmed, never run: a test that pops a
+  # real window is a test nobody can run twice. $SB/bin comes first on PATH, so
+  # this shadows the real launcher wherever the suite runs.
+  cat >"$SB/bin/omarchy-launch-floating-terminal-with-presentation" <<SHIM
+#!/usr/bin/env bash
+echo "omarchy-launch-floating-terminal-with-presentation \$*" >>"$LOG"
+SHIM
+  chmod +x "$SB/bin/omarchy-launch-floating-terminal-with-presentation"
 }
 
 run() { HOME="$SB" PATH="$SB/bin:$PATH" "$@"; }
+
+# The consent window is launched in the background, so its shim lands a moment
+# after the script that launched it has exited.
+waitlogged() { # <substring>
+  local i
+  for ((i = 0; i < 150; i++)); do
+    grep -qF "$1" "$LOG" && return 0
+    sleep 0.02
+  done
+  return 1
+}
 
 # --- jot-config --------------------------------------------------------------
 
@@ -237,10 +256,10 @@ chmod 755 "$SB/ro"
 fresh_sandbox
 run "$HERE/bin/jot-setup"
 check "setup: writes default config" grep -q '"file": "~/notes/inbox.md"' "$SB/.config/jot/config.json"
-# Setup keeps to what is reversible and invisible until sought. A key is
-# neither, so it never reaches for one — not even to check what holds it.
+# Setup writes no key of its own — it asks, in a window, and only the answer
+# can bind. The question is a floating terminal running the prompt.
 check "setup: takes no keybinding" not grep -q 'jot' "$SB/.config/hypr/bindings.lua"
-check "setup: never asks what is bound" not grep -q '^hyprctl' "$LOG"
+check "setup: first load asks about the key" waitlogged 'jot-ask-key --prompt'
 MENUF="$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
 check "setup: menu rows added" grep -q '"trigger.jot.down"' "$MENUF"
 check "setup: menu open-inbox uses absolute path" grep -qF "$HERE/bin/jot-open-inbox" "$MENUF"
@@ -250,8 +269,8 @@ check "setup: menu block closes before brace" \
   bash -c 'tail -n 2 "$1" | head -n 1 | grep -q "<<< jot menu <<<"' _ "$MENUF"
 check "setup: flag written" [ -e "$SB/.config/jot/.setup-done" ]
 check "setup: ready notification" grep -q '^omarchy-notification-send Jot is ready' "$LOG"
-check "setup: ready notification says where the shortcut waits" \
-  grep -q 'add the SUPER+N shortcut from the menu' "$LOG"
+check "setup: ready notification drops the menu pointer once it has asked" \
+  not grep -q 'add the SUPER+N shortcut from the menu' "$LOG"
 
 # That guard is the whole consent story in the menu: it has to answer "show
 # me" while no shortcut exists and "hide me" the moment one does. Run the
@@ -305,6 +324,68 @@ check "setup: unparseable menu still writes config" [ -f "$SB/.config/jot/config
 check "setup: unparseable menu still writes flag" [ -e "$SB/.config/jot/.setup-done" ]
 check "setup: unparseable menu still reports ready" \
   grep -q '^omarchy-notification-send Jot is ready' "$LOG"
+
+# --- jot-ask-key -------------------------------------------------------------
+# The first-load question: whether to ask at all, then the asking itself.
+
+# A forced re-run does the setup work again; it is not a first load, so it never
+# reopens a question that has already been answered.
+fresh_sandbox
+run "$HERE/bin/jot-setup"
+check "ask: first load asked once" waitlogged 'jot-ask-key --prompt'
+run "$HERE/bin/jot-setup" --force
+check "ask: a forced re-run asks nothing" \
+  [ "$(grep -c 'jot-ask-key --prompt' "$LOG")" = "1" ]
+
+# A key someone else holds is not Jot's to offer: no window, and the
+# notification goes back to saying where the shortcut waits.
+fresh_sandbox
+echo '[{"modmask":64,"key":"N"}]' >"$SB/hyprctl.out"
+run "$HERE/bin/jot-setup"
+check "ask: a taken key opens no window" not grep -q 'floating-terminal' "$LOG"
+check "ask: a taken key keeps the menu pointer" \
+  grep -q 'add the SUPER+N shortcut from the menu' "$LOG"
+
+# A binding already in place answers the question before it is asked.
+fresh_sandbox
+printf -- '-- >>> jot >>>\nbind\n-- <<< jot <<<\n' >"$SB/.config/hypr/bindings.lua"
+run "$HERE/bin/jot-setup"
+check "ask: an existing binding opens no window" not grep -q 'floating-terminal' "$LOG"
+
+# No launcher to ask through: fall back to the notification, never to silence.
+fresh_sandbox
+run env JOT_ASK_LAUNCHER=jot-no-such-launcher "$HERE/bin/jot-setup"
+check "ask: a missing launcher opens no window" not grep -q 'floating-terminal' "$LOG"
+check "ask: a missing launcher keeps the menu pointer" \
+  grep -q 'add the SUPER+N shortcut from the menu' "$LOG"
+
+# The question itself, as it runs inside the floating terminal. No tty here, so
+# it takes the plain-read path and the answer comes from stdin.
+fresh_sandbox
+out="$(printf 'y\n' | run "$HERE/bin/jot-ask-key" --prompt 2>&1)"; rc=$?
+check "prompt: asks in one line" grep -q 'Add the SUPER+N shortcut?' <<<"$out"
+check "prompt: yes binds the shortcut" grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
+check "prompt: yes exits cleanly" [ "$rc" = "0" ]
+
+fresh_sandbox
+out="$(printf 'n\n' | run "$HERE/bin/jot-ask-key" --prompt 2>&1)"; rc=$?
+check "prompt: no writes no binding" not grep -q 'jot' "$SB/.config/hypr/bindings.lua"
+check "prompt: no points at the menu row" grep -q 'from the Jot menu' <<<"$out"
+check "prompt: no exits cleanly" [ "$rc" = "0" ]
+
+fresh_sandbox
+out="$(printf '\n' | run "$HERE/bin/jot-ask-key" --prompt 2>&1)"
+check "prompt: silence declines" not grep -q 'jot' "$SB/.config/hypr/bindings.lua"
+check "prompt: silence points at the menu row too" grep -q 'from the Jot menu' <<<"$out"
+
+# The key can go while the window is opening; the prompt checks again before it
+# asks, so it never offers what is no longer free.
+fresh_sandbox
+echo '[{"modmask":64,"key":"N"}]' >"$SB/hyprctl.out"
+out="$(printf 'y\n' | run "$HERE/bin/jot-ask-key" --prompt 2>&1)"
+check "prompt: a key taken meanwhile is not offered" [ -z "$out" ]
+check "prompt: a key taken meanwhile is not bound" \
+  not grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
 
 # --- jot-bind-key ------------------------------------------------------------
 # The shortcut, and the only thing that ever writes one. It reports through

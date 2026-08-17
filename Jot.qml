@@ -57,8 +57,8 @@ Item {
     Quickshell.execDetached([root.pluginDir + "/bin/jot-append", captured])
   }
 
-  // First-load omakase setup (config, menu rows — no keybinding, that one is
-  // asked for). Idempotent.
+  // First-load omakase setup (config, menu rows — no keybinding; the first run
+  // asks about SUPER+N in a floating terminal). Idempotent.
   Process {
     id: setupProcess
     command: [root.pluginDir + "/bin/jot-setup"]
