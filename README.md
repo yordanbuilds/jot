@@ -63,11 +63,9 @@ timestamp at all.
 ## Uninstall
 
     ~/.config/omarchy/plugins/yordanbuilds.jot/bin/jot-uninstall
-    omarchy plugin remove yordanbuilds.jot
 
-The first command removes the menu entries and the keybinding if you added
-one, then asks about `~/.config/jot` (`--purge` skips the question). Your
-notes file is never touched.
+It asks about `~/.config/jot` (`--purge` skips the question), then removes
+the plugin itself. Your notes file is never touched.
 
 ## License
 

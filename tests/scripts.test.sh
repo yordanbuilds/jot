@@ -52,6 +52,16 @@ SHIM
 echo "omarchy-launch-floating-terminal-with-presentation \$*" >>"$LOG"
 SHIM
   chmod +x "$SB/bin/omarchy-launch-floating-terminal-with-presentation"
+  # jot-uninstall ends in `exec omarchy plugin remove …`, which on a real box
+  # takes the plugin away. This recording stub stands in for it, and the canary
+  # it answers lets the uninstall tests prove they are talking to the stub
+  # before they run at all.
+  cat >"$SB/bin/omarchy" <<SHIM
+#!/usr/bin/env bash
+[[ \${1:-} == --canary ]] && { echo STUB; exit 0; }
+echo "omarchy \$*" >>"$LOG"
+SHIM
+  chmod +x "$SB/bin/omarchy"
 }
 
 run() { HOME="$SB" PATH="$SB/bin:$PATH" "$@"; }
@@ -433,6 +443,19 @@ check "bind-key: missing hypr dir is created" [ -d "$SB/.config/hypr" ]
 check "bind-key: missing hypr dir still binds" grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
 
 # --- jot-uninstall -----------------------------------------------------------
+# The last line of the script is the dangerous one: `exec omarchy plugin remove
+# yordanbuilds.jot --yes` would uninstall the plugin off the machine running the
+# suite. Every run below goes through this wrapper, and each one re-proves that
+# `omarchy` resolves to the sandbox stub — a canary the real omarchy would
+# reject as an unknown command. No proof, no run, and a loud failure.
+uninstall() { # <args...>
+  if [[ "$(run omarchy --canary 2>/dev/null)" != STUB ]]; then
+    FAIL=$((FAIL+1))
+    echo "FAIL  uninstall: no omarchy stub on PATH — refusing to run jot-uninstall"
+    return 1
+  fi
+  run "$HERE/bin/jot-uninstall" "$@"
+}
 
 fresh_sandbox
 printf -- '-- mine\no.bind("SUPER + B", "Mine", "x")\n' >"$SB/.config/hypr/bindings.lua"
@@ -440,18 +463,40 @@ printf '{\n  "personal": {"icon":"x","label":"Personal"}\n}\n' >"$SB/.config/oma
 run "$HERE/bin/jot-setup"
 run "$HERE/bin/jot-bind-key" >/dev/null
 run "$HERE/bin/jot-append" "keep me"
-run "$HERE/bin/jot-uninstall" </dev/null
+uninstall </dev/null
 check "uninstall: binding block gone" not grep -q 'jot' "$SB/.config/hypr/bindings.lua"
 check "uninstall: user bindings survive" grep -q 'SUPER + B' "$SB/.config/hypr/bindings.lua"
 check "uninstall: menu rows gone" not grep -q 'trigger.jot' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
 check "uninstall: user menu entries survive" grep -q 'Personal' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
 check "uninstall: config kept without --purge" [ -f "$SB/.config/jot/config.json" ]
 check "uninstall: notes file untouched" grep -q 'keep me' "$SB/notes/inbox.md"
+# One command, all the way to the end: the plugin itself is the last removal.
+check "uninstall: hands the plugin to omarchy" \
+  grep -q '^omarchy plugin remove yordanbuilds.jot --yes$' "$LOG"
 
 fresh_sandbox
 run "$HERE/bin/jot-setup"
-run "$HERE/bin/jot-uninstall" --purge
+uninstall --purge
 check "uninstall --purge: config dir removed" not test -d "$SB/.config/jot"
+check "uninstall --purge: plugin still removed after the purge" \
+  grep -q '^omarchy plugin remove yordanbuilds.jot --yes$' "$LOG"
+
+# No omarchy to hand the plugin to: say which command finishes the job instead
+# of dying on a bare "command not found". PATH is cut down to symlinks for the
+# two coreutils the script needs, so omarchy is genuinely absent rather than
+# shadowed — and that absence is asserted before the run.
+fresh_sandbox
+run "$HERE/bin/jot-setup"
+mkdir -p "$SB/minbin"
+ln -s "$(command -v sed)" "$SB/minbin/sed"
+ln -s "$(command -v rm)" "$SB/minbin/rm"
+check "uninstall: the cut-down PATH has no omarchy at all" \
+  bash -c 'PATH="$1"; ! command -v omarchy >/dev/null' _ "$SB/minbin"
+out="$(HOME="$SB" PATH="$SB/minbin" "$BASH" "$HERE/bin/jot-uninstall" --purge 2>&1)"; rc=$?
+check "uninstall: a missing omarchy exits 0" [ "$rc" = "0" ]
+check "uninstall: a missing omarchy names the command to finish with" \
+  grep -q 'finish with: omarchy plugin remove yordanbuilds.jot' <<<"$out"
+check "uninstall: a missing omarchy still did the removals" not test -d "$SB/.config/jot"
 
 # .setup-done is setup's own bookkeeping, not your data: it goes even without
 # --purge, so re-adding the plugin installs again instead of no-opping into a
@@ -459,7 +504,7 @@ check "uninstall --purge: config dir removed" not test -d "$SB/.config/jot"
 
 fresh_sandbox
 run "$HERE/bin/jot-setup"
-run "$HERE/bin/jot-uninstall" </dev/null
+uninstall </dev/null
 check "uninstall: setup flag cleared without --purge" not test -e "$SB/.config/jot/.setup-done"
 check "uninstall: config kept when the flag goes" [ -f "$SB/.config/jot/config.json" ]
 run "$HERE/bin/jot-setup"

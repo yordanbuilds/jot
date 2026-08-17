@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# jot-uninstall — remove everything Jot added, the shortcut included. Run by
-# full path:
+# jot-uninstall — remove everything Jot added, the shortcut and the plugin
+# itself included. Run by full path:
 #   ~/.config/omarchy/plugins/yordanbuilds.jot/bin/jot-uninstall [--purge]
-# Never touches your notes file. Finish with:
-#   omarchy plugin remove yordanbuilds.jot
+# Never touches your notes file.
 set -u
 
 BINDINGS="$HOME/.config/hypr/bindings.lua"
@@ -25,4 +24,13 @@ fi
 [[ $purge == --purge ]] && rm -rf "$HOME/.config/jot"
 
 echo "Jot's menu entries are removed, and the keybinding with them if you added one."
-echo "Finish with: omarchy plugin remove yordanbuilds.jot"
+
+# The plugin goes last, in the same command: this script lives inside the
+# directory omarchy is about to take away, so nothing may follow the exec.
+# Without omarchy on PATH there is nothing to hand the plugin to — say which
+# command finishes the job rather than dying on a bare "command not found".
+if ! command -v omarchy >/dev/null 2>&1; then
+  echo "No omarchy on PATH — finish with: omarchy plugin remove yordanbuilds.jot"
+  exit 0
+fi
+exec omarchy plugin remove yordanbuilds.jot --yes
