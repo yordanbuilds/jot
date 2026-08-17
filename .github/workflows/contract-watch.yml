@@ -1,0 +1,124 @@
+name: contract-watch
+
+# Jot is written against Omarchy's plugin contract — the shell's plugin
+# registry, the menu protocol, the manifest validator, and the prose that
+# documents all three. None of that is versioned or announced; it changes when
+# it changes. test.yml already re-runs the suite weekly, which catches a break
+# the moment it becomes a break. This job is the earlier warning: once a week it
+# looks at what actually moved in those files upstream and opens an issue with
+# the diff, so the change gets read before it bites.
+#
+# It keeps no state. Every run asks the same question — "what changed in the
+# last eight days" — and the overlap with the seven-day schedule is deliberate
+# slack, so a late or skipped run does not open a hole. Re-running the same
+# window twice is harmless: the head sha is in the issue title, and the run
+# checks for an issue that already names it before opening another.
+
+on:
+  schedule:
+    # Wednesday, well away from test.yml's Monday cron so a busy hour on one
+    # never delays the other.
+    - cron: "41 16 * * 3"
+  workflow_dispatch:
+
+# It reads a public repository and files an issue. It never writes here.
+permissions:
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Widen to re-read further back by hand; set CONTRACT_WATCH_DRY_RUN=1 on a
+      # manual run to print the issue instead of opening it.
+      WINDOW: 8 days ago
+    steps:
+      - name: Watch the contract
+        run: |
+          set -euo pipefail
+
+          # The parts of Omarchy that snooze is built against. A change to any
+          # of them is a change to what this plugin is allowed to assume.
+          FILES=(
+            docs/omarchy-shell.md
+            docs/menu.md
+            shell/services/PluginRegistry.qml
+            shell/plugins/README.md
+            manual/32-shell-plugins.md
+            AGENTS.md
+            bin/omarchy-plugin-validate
+          )
+
+          # Blobless partial clone: the full commit history (needed to walk back
+          # to the commit before the window) without downloading every file in
+          # the repo. git fetches the handful of blobs the diff touches on
+          # demand.
+          git clone --quiet --filter=blob:none --no-checkout \
+            https://github.com/basecamp/omarchy.git omarchy
+          cd omarchy
+
+          mapfile -t commits < <(git log --since="$WINDOW" --format=%H -- "${FILES[@]}")
+          if [ "${#commits[@]}" -eq 0 ]; then
+            echo "contract-watch: no watched file changed since $WINDOW"
+            exit 0
+          fi
+
+          # git log is newest first, so the range runs from the parent of the
+          # oldest commit in the window to the newest one.
+          newest="${commits[0]}"
+          oldest="${commits[${#commits[@]}-1]}"
+          base="$(git rev-parse --verify --quiet "$oldest^" || echo "$oldest")"
+          short_base="$(git rev-parse --short "$base")"
+          short_head="$(git rev-parse --short "$newest")"
+
+          changed="$(git diff --name-only "$base" "$newest" -- "${FILES[@]}")"
+          if [ -z "$changed" ]; then
+            echo "contract-watch: commits touched the watched files but the range nets out empty"
+            exit 0
+          fi
+
+          title="Contract watch: basecamp/omarchy $short_base..$short_head"
+          compare="https://github.com/basecamp/omarchy/compare/$base...$newest"
+
+          # Dedupe on the head sha rather than the title, so a re-run over a
+          # wider window that ends at the same commit stays quiet too.
+          if [ -n "$(gh issue list --repo "$GITHUB_REPOSITORY" --state all \
+                       --search "$short_head" --json number --jq '.[].number')" ]; then
+            echo "contract-watch: an issue already references $short_head — nothing to open"
+            exit 0
+          fi
+
+          {
+            echo "Omarchy's plugin contract moved. These watched files changed between"
+            echo "\`$short_base\` and \`$short_head\`:"
+            echo
+            printf '%s\n' "$changed" | sed 's/^/- `/; s/$/`/'
+            echo
+            echo "$compare"
+          } > body.md
+
+          diff="$(git diff "$base" "$newest" -- "${FILES[@]}")"
+          # Roughly GitHub's comfortable issue-body size; past it the compare
+          # link is the better read anyway.
+          if [ "${#diff}" -le 15000 ]; then
+            {
+              echo
+              echo '```diff'
+              printf '%s\n' "$diff"
+              echo '```'
+            } >> body.md
+          else
+            echo >> body.md
+            echo "Diff is ${#diff} bytes — read it at the compare link above." >> body.md
+          fi
+
+          if [ "${CONTRACT_WATCH_DRY_RUN:-}" = "1" ]; then
+            echo "contract-watch: DRY RUN — would open:"
+            echo "  $title"
+            sed 's/^/  /' body.md
+            exit 0
+          fi
+
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "$title" --body-file body.md
