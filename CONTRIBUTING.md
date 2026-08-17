@@ -22,5 +22,5 @@ bash tests/scripts.test.sh   # the whole bash surface, sandboxed — no live ses
 bash tests/qml-smoke.sh      # qmllint against the shell modules (skips where unavailable)
 ```
 
-The script tests run in CI on every push and pull request; a PR needs
-them green. Please add tests for behavior you change.
+Both run in CI on every push and pull request; a PR needs them green.
+Please add tests for behavior you change.
