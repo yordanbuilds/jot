@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "yordanbuilds.jot",
   "name": "Jot",
-  "version": "1.2.0",
+  "version": "1.0.0",
   "author": "Yordan Yordanov",
   "license": "MIT",
   "description": "Quick capture for Omarchy — hotkey, one thought, appended to your inbox",
