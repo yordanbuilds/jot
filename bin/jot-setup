@@ -20,6 +20,20 @@ first_run=true
 
 notify() { command -v omarchy-notification-send >/dev/null 2>&1 && omarchy-notification-send "$1" "$2" || true; }
 
+# Mirrors stripJsonc() in Omarchy's shell/plugins/menu/MenuModel.js: whole-line
+# // comments and trailing commas come out, and what is left must decode as a
+# JSON object. A file that fails this contributes no entries at all — the menu
+# drops every user row and says nothing — so nothing lands until it parses.
+# Keep the s!...! delimiters: with s{...} the } inside [}\]] ends the pattern
+# early, perl errors, and the gate then rejects everything.
+menu_parses() {
+  perl -0777 -MJSON::PP -ne '
+    s!^\s*//[^\n]*(\n|$)!!gm; s!,(\s*[}\]])!$1!g;
+    my $d = eval { JSON::PP->new->decode($_) };
+    exit(($@ || ref $d ne "HASH") ? 1 : 0);
+  ' "$1" 2>/dev/null
+}
+
 mkdir -p "$HOME/.config/jot"
 
 # --- The jot command, on your PATH -------------------------------------------
@@ -60,6 +74,9 @@ if ! grep -q '>>> jot menu >>>' "$MENU" 2>/dev/null; then
   "trigger.jot.bind-key": { "icon": "󰌌", "label": "Add SUPER+N shortcut", "action": "$PLUGIN_DIR/bin/jot-bind-key", "when": "! grep -q '>>> jot >>>' ~/.config/hypr/bindings.lua" },
   // <<< jot menu <<<
 EOF
+  # A seam for the test that proves the gate works. Nothing sets this in normal
+  # use; setup's own rows are fixed text and always parse.
+  if [[ -n ${JOT_MENU_FORCE_BAD_BLOCK:-} ]]; then printf '  "unterminated: {\n' >>"$blocktmp"; fi
   # Insert before the file's closing brace, adding a comma to the preceding
   # entry if it lacks one (same approach as Rig's rig-menu-sync). A file with
   # no closing brace on a line of its own is one we don't understand: say so
@@ -82,11 +99,15 @@ EOF
         print lines[i]
       }
     }
-  ' "$MENU" >"$tmp"; then
+  ' "$MENU" >"$tmp" && menu_parses "$tmp"; then
     mv "$tmp" "$MENU"
-  else
+  elif menu_parses "$MENU"; then
+    # Either awk found no closing brace to insert before, or the result would
+    # not parse. Either way the file was fine before we touched it.
     notify "Jot" "Couldn't add menu entries — add them by hand (see README)"
   fi
+  # A file that was already unparseable stays as it is, without comment: not
+  # ours to break, and not ours to announce on every --force.
 fi
 
 mkdir -p "$(dirname "$FLAG")"

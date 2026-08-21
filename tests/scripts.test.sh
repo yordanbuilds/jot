@@ -15,6 +15,11 @@ check() { # <label> <command...>
 
 not() { ! "$@"; }
 
+# The gate the script itself uses, lifted out of it rather than copied. A copy
+# here would let these tests keep passing after the script's answer changed.
+# The sed range takes only the function, so the script body never runs.
+eval "$(sed -n '/^menu_parses() {$/,/^}$/p' "$HERE/bin/jot-setup")"
+
 fresh_sandbox() {
   SB="$(mktemp -d)"
   LOG="$SB/calls.log"; : >"$LOG"
@@ -677,6 +682,37 @@ check "reinstall: menu rows return without --force" \
   grep -q '"trigger.jot.down"' "$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
 check "reinstall: the shortcut is still asked for, not restored" \
   not grep -q 'SUPER + N' "$SB/.config/hypr/bindings.lua"
+
+# --- jot-setup: the menu file it writes into --------------------------------
+# The menu drops every user row without a word when its extension file does not
+# parse (docs/menu.md). Setup writes into that file, so it checks its work.
+fresh_sandbox
+MENUF="$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+printf '{\n  "personal.notes": {"label":"Notes"}\n}\n' >"$MENUF"
+run "$HERE/bin/jot-setup"
+check "setup: the menu it wrote parses" menu_parses "$MENUF"
+
+# Forced bad output must not land, and must be reported: the file was fine
+# before setup touched it.
+fresh_sandbox
+MENUF="$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+printf '{\n  "personal.notes": {"label":"Notes"}\n}\n' >"$MENUF"
+before="$(cat "$MENUF")"
+run env JOT_MENU_FORCE_BAD_BLOCK=1 "$HERE/bin/jot-setup"
+check "setup: a bad candidate never lands" [ "$before" = "$(cat "$MENUF")" ]
+check "setup: and says so" grep -q "Couldn't add menu entries" "$LOG"
+
+# A file that was already broken is not setup's to announce. The rest of setup
+# still has to finish: the config, the symlink, and the flag are not the menu's
+# business.
+fresh_sandbox
+MENUF="$SB/.config/omarchy/extensions/omarchy-menu.jsonc"
+printf '{\n  "oops": \n}\n' >"$MENUF"
+before="$(cat "$MENUF")"
+run "$HERE/bin/jot-setup"
+check "setup: an already-broken menu is left alone" [ "$before" = "$(cat "$MENUF")" ]
+check "setup: and no menu complaint is raised" not grep -q "Couldn't add menu entries" "$LOG"
+check "setup: the rest of setup still ran" test -e "$SB/.local/state/jot/.setup-done"
 
 # --- summary -----------------------------------------------------------------
 
