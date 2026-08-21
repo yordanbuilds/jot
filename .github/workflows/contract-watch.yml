@@ -38,11 +38,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          # The parts of Omarchy that snooze is built against. A change to any
+          # The parts of Omarchy that jot is built against. A change to any
           # of them is a change to what this plugin is allowed to assume.
           FILES=(
             docs/omarchy-shell.md
             docs/menu.md
+            shell/plugins/menu/MenuModel.js
             shell/services/PluginRegistry.qml
             shell/plugins/README.md
             manual/32-shell-plugins.md
